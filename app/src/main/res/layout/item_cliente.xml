@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cardPadre"
+    android:layout_width="200dp"
+    android:layout_height="230dp"
+    android:layout_margin="10dp"
+    app:cardBackgroundColor="#FFFFFF"
+    app:cardCornerRadius="16dp"
+    app:cardElevation="10dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="#E0E0E0">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- BOTONES SUPERIOR DERECHA -->
+        <LinearLayout
+            android:id="@+id/llActions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="6dp"
+            android:orientation="horizontal"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <ImageButton
+                android:id="@+id/btnView"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="@drawable/bg_btn_light"
+                android:src="@drawable/ic_visibility"
+                app:tint="#455A64"/>
+
+            <ImageButton
+                android:id="@+id/btnAdd"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/bg_btn_light"
+                android:src="@drawable/ic_add_circle"
+                app:tint="#2E7D32"/>
+
+            <ImageButton
+                android:id="@+id/btnPay"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="4dp"
+                android:background="@drawable/bg_btn_light"
+                android:src="@drawable/ic_monetization"
+                app:tint="#F9A825"/>
+        </LinearLayout>
+
+        <!-- CONTENEDOR AVATAR -->
+        <View
+            android:id="@+id/bgIcono"
+            android:layout_width="96dp"
+            android:layout_height="96dp"
+            android:background="@drawable/bg_avatar_light"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+        <!-- AVATAR -->
+        <ImageView
+            android:id="@+id/ivRolIcon"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:src="@drawable/ic_person"
+            app:tint="#455A64"
+            app:layout_constraintTop_toTopOf="@id/bgIcono"
+            app:layout_constraintBottom_toBottomOf="@id/bgIcono"
+            app:layout_constraintStart_toStartOf="@id/bgIcono"
+            app:layout_constraintEnd_toEndOf="@id/bgIcono"/>
+
+        <!-- ALIAS -->
+        <TextView
+            android:id="@+id/tvAlias"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Juan"
+            android:textColor="#212121"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginTop="6dp"
+            app:layout_constraintTop_toBottomOf="@id/bgIcono"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+        <!-- DIVIDER -->
+        <View
+            android:id="@+id/divider"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="6dp"
+            android:background="#E0E0E0"
+            app:layout_constraintTop_toBottomOf="@id/tvAlias"/>
+
+        <!-- TIPO -->
+        <TextView
+            android:id="@+id/tvClientType"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="INDIVIDUAL"
+            android:textColor="#757575"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="4dp"
+            app:layout_constraintTop_toBottomOf="@id/divider"
+            app:layout_constraintStart_toStartOf="parent"/>
+
+        <!-- MONTO -->
+        <TextView
+            android:id="@+id/tvAmount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="$ 0.0"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="8dp"
+            app:layout_constraintTop_toBottomOf="@id/divider"
+            app:layout_constraintEnd_toEndOf="parent"/>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</com.google.android.material.card.MaterialCardView>

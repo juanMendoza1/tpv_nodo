@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Palo -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="
+            M6,2
+            C5.45,2 5,2.45 5,3V22
+            H7V14"/>
+
+    <!-- Bandera -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="
+            M7,4
+            H18
+            L16,7
+            L18,10
+            H7Z"/>
+</vector>

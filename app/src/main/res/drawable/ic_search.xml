@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Lupa -->
+    <path
+        android:fillColor="#757575"
+        android:pathData="M15.5,14h-0.79l-0.28,-0.27c0.98,-1.14 1.57,-2.62 1.57,-4.23
+                          C16,6.01 13.99,4 11.5,4
+                          S7,6.01 7,9.5
+                          S9.01,15 11.5,15
+                          c1.61,0 3.09,-0.59 4.23,-1.57
+                          l0.27,0.28v0.79L20,19.49
+                          L21.49,18
+                          l-5.99,-6z"/>
+
+    <!-- Centro -->
+    <path
+        android:fillColor="#757575"
+        android:pathData="M11.5,7
+                          c1.38,0 2.5,1.12 2.5,2.5
+                          S12.88,12 11.5,12
+                          S9,10.88 9,9.5
+                          S10.12,7 11.5,7z"/>
+</vector>

@@ -1,0 +1,19 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:weightSum="10">
+
+    <TextView android:id="@+id/txtMarcador" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="2" android:text="1-0" android:textColor="#FFD600" android:textStyle="bold"/>
+
+    <TextView android:id="@+id/txtEquipo" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="2" android:text="🔵" android:gravity="center"/>
+
+    <TextView android:id="@+id/txtProducto" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="4" android:text="Cerveza..." android:textColor="#FFFFFF" android:maxLines="1" android:ellipsize="end"/>
+
+    <TextView android:id="@+id/txtValor" android:layout_width="0dp" android:layout_height="wrap_content"
+        android:layout_weight="2" android:text="$5.000" android:textColor="#00E5FF" android:gravity="end"/>
+</LinearLayout>

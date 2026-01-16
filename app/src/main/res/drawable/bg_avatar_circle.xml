@@ -1,0 +1,12 @@
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+
+    <!-- Fondo del avatar -->
+    <solid android:color="#E0E0E0"/>
+
+    <!-- Borde del círculo -->
+    <stroke
+        android:width="2dp"
+        android:color="#BDBDBD"/>
+
+</shape>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Puerta / contenedor -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="
+            M10,3
+            h8
+            c1.1,0 2,0.9 2,2
+            v14
+            c0,1.1 -0.9,2 -2,2
+            h-8
+            v-2
+            h8
+            v-14
+            h-8
+            z"/>
+
+    <!-- Flecha de salida -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="
+            M10,17
+            l-1.41,-1.41
+            L12.17,12
+            L8.59,8.41
+            L10,7
+            l5,5
+            z"/>
+
+    <!-- Línea central -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M3,11h9v2h-9z"/>
+</vector>

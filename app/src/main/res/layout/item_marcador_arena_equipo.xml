@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="6dp"
+    android:layout_marginVertical="4dp"
+    app:cardBackgroundColor="#33000000"
+    app:cardCornerRadius="40dp"
+    app:cardElevation="0dp"
+    app:strokeWidth="2.5dp"
+    app:strokeColor="#00E5FF">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="8dp"
+        android:minWidth="80dp"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/tvScoreDinamico"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0"
+            android:textColor="#FFFFFF"
+            android:textSize="34sp"
+            android:textStyle="bold"
+            android:includeFontPadding="false"
+            android:fontFamily="monospace"/>
+
+        <TextView
+            android:id="@+id/tvLabelEquipoDinamico"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AMARILLO"
+            android:textColor="#E6FFFFFF"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.05"
+            android:textAllCaps="true"
+            android:includeFontPadding="false"
+            android:lines="1"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:maxWidth="70dp"
+            android:scrollHorizontally="true"/>
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Cuerpo de la bolsa -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="
+            M6,7
+            H18
+            C19.1,7 20,7.9 20,9
+            V20
+            C20,21.1 19.1,22 18,22
+            H6
+            C4.9,22 4,21.1 4,20
+            V9
+            C4,7.9 4.9,7 6,7
+            Z" />
+
+    <!-- Asa izquierda -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="
+            M8,7
+            C8,4.8 9.8,3 12,3
+            C14.2,3 16,4.8 16,7
+            H14
+            C14,5.9 13.1,5 12,5
+            C10.9,5 10,5.9 10,7
+            H8
+            Z" />
+</vector>

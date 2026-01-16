@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0F0F0F">
+
+    <View
+        android:id="@+id/bgAzul"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:background="@drawable/gradient_blue_arena"
+        app:layout_constraintHorizontal_weight="1"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@+id/guidelineCenter" />
+
+    <View
+        android:id="@+id/bgRojo"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:background="@drawable/gradient_red_arena"
+        app:layout_constraintHorizontal_weight="1"
+        app:layout_constraintStart_toEndOf="@+id/guidelineCenter"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guidelineCenter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.5" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnExpandirArena"
+            style="@style/Widget.MaterialComponents.Button.Icon"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
+            app:backgroundTint="#4D000000"
+            app:cornerRadius="23dp"
+            app:icon="@drawable/ic_fullscreen"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="24dp"
+            app:iconTint="#FFFFFF"
+            app:strokeColor="#4DFFFFFF"
+            app:strokeWidth="1dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnHistorialDuelo"
+            style="@style/Widget.MaterialComponents.Button.Icon"
+            android:layout_width="45dp"
+            android:layout_height="45dp"
+            android:layout_marginTop="12dp"
+            app:backgroundTint="#4D000000"
+            app:cornerRadius="23dp"
+            app:icon="@drawable/ic_history"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconSize="24dp"
+            app:iconTint="#FFD600"
+            app:strokeColor="#4DFFD600"
+            app:strokeWidth="1dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/layoutScore"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_scoreboard_frame"
+        android:elevation="8dp"
+        android:paddingHorizontal="25dp"
+        android:paddingVertical="10dp"
+        android:gravity="center"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="15dp">
+
+        <TextView
+            android:id="@+id/tvScoreAzul"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0"
+            android:textColor="#00E5FF"
+            android:textSize="48sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:textAlignment="center" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="VS"
+            android:textColor="#88FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="italic"
+            android:layout_marginHorizontal="15dp"/>
+
+        <TextView
+            android:id="@+id/tvScoreRojo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0"
+            android:textColor="#FF1744"
+            android:textSize="48sp"
+            android:textStyle="bold"
+            android:fontFamily="monospace"
+            android:textAlignment="center" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvProductoEnJuego"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CARGAR MUNICIÓN 👜"
+        android:textColor="#FFD600"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:background="@drawable/bg_badge_monto"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="4dp"
+        android:layout_marginTop="8dp"
+        android:elevation="4dp"
+        app:layout_constraintTop_toBottomOf="@id/layoutScore"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="10dp"
+        android:paddingHorizontal="5dp"
+        app:layout_constraintTop_toBottomOf="@id/tvProductoEnJuego"
+        app:layout_constraintBottom_toTopOf="@id/btnFinalizarDuelo">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:baselineAligned="false">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
+
+                <TextView
+                    android:id="@+id/tvLabelAzul"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="EQUIPO AZUL"
+                    android:textColor="#00E5FF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="8dp"/>
+
+                <include
+                    android:id="@+id/burbujaMaestraAzul"
+                    layout="@layout/item_duelo_mini"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+                <com.google.android.flexbox.FlexboxLayout
+                    android:id="@+id/containerIntegrantesAzul"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    app:flexWrap="wrap"
+                    app:justifyContent="center"
+                    app:alignItems="center" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_horizontal">
+
+                <TextView
+                    android:id="@+id/tvLabelRojo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="EQUIPO ROJO"
+                    android:textColor="#FF1744"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="8dp"/>
+
+                <include
+                    android:id="@+id/burbujaMaestraRojo"
+                    layout="@layout/item_duelo_mini"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+                <com.google.android.flexbox.FlexboxLayout
+                    android:id="@+id/containerIntegrantesRojo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    app:flexWrap="wrap"
+                    app:justifyContent="center"
+                    app:alignItems="center" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabSeleccionarMunicion"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="20dp"
+        app:srcCompat="@drawable/ic_shopping_bag"
+        app:backgroundTint="#FFD600"
+        app:tint="#000000"
+        app:fabSize="normal"
+        app:layout_constraintBottom_toTopOf="@+id/btnFinalizarDuelo"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:elevation="8dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnFinalizarDuelo"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        android:layout_width="wrap_content"
+        android:layout_height="50dp"
+        android:layout_marginBottom="25dp"
+        android:text="FINALIZAR BATALLA"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"
+        app:strokeColor="#FFD600"
+        app:strokeWidth="2dp"
+        app:cornerRadius="25dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <com.airbnb.lottie.LottieAnimationView
+        android:id="@+id/lottieCelebration"
+        android:layout_width="250dp"
+        android:layout_height="250dp"
+        android:visibility="gone"
+        android:elevation="25dp"
+        app:lottie_rawRes="@raw/donald"
+        app:lottie_autoPlay="false"
+        app:lottie_loop="false"
+        android:scaleType="centerInside"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

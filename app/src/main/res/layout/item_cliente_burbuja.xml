@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:orientation="vertical"
+    android:padding="5dp"
+    android:gravity="center">
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/imgBurbuja"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:padding="2dp"
+        android:src="@drawable/ic_user_placeholder"
+        app:shapeAppearanceOverlay="@style/ShapeAppearance.MaterialComponents.SmallComponent"
+        app:strokeColor="#00E5FF"
+        app:strokeWidth="3dp" />
+
+    <TextView
+        android:id="@+id/tvNombreBurbuja"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Alias"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:maxWidth="65dp"
+        android:ellipsize="end"
+        android:maxLines="1" />
+
+    <TextView
+        android:id="@+id/tvSaldoClienteBurbuja"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="$0"
+        android:textColor="#FFD600"
+        android:textSize="9sp"
+        android:textStyle="bold"
+        android:shadowColor="#000000"
+        android:shadowDx="1"
+        android:shadowDy="1"
+        android:shadowRadius="1"
+        tools:visibility="visible" />
+
+</LinearLayout>

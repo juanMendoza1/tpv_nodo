@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Marco superior izquierdo -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M3,3h7v7H3z"/>
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M5,5h3v3H5z"/>
+
+    <!-- Marco superior derecho -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M14,3h7v7h-7z"/>
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M16,5h3v3h-3z"/>
+
+    <!-- Marco inferior izquierdo -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M3,14h7v7H3z"/>
+
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M5,16h3v3H5z"/>
+
+    <!-- Píxeles internos QR -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="
+            M12,12h2v2h-2z
+            M16,12h2v4h-2z
+            M12,16h4v2h-4z
+            M18,18h2v2h-2z"/>
+</vector>
