@@ -13,24 +13,31 @@ import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.nodo.tpv.data.converters.BigDecimalConverter;
 import com.nodo.tpv.data.dao.ClienteDao;
+import com.nodo.tpv.data.dao.DetalleDueloTemporalIndDao;
 import com.nodo.tpv.data.dao.DetallePedidoDao;
 import com.nodo.tpv.data.dao.DueloDao;
 import com.nodo.tpv.data.dao.DueloTemporalIndDao;
 import com.nodo.tpv.data.dao.MesaDao;
+import com.nodo.tpv.data.dao.PerfilDueloIndDao;
 import com.nodo.tpv.data.dao.ProductoDao;
 import com.nodo.tpv.data.dao.TipoClienteDao;
 import com.nodo.tpv.data.dao.UsuarioDao;
 import com.nodo.tpv.data.entities.Cliente;
+import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DetallePedido;
 import com.nodo.tpv.data.entities.DueloTemporal;
 import com.nodo.tpv.data.entities.DueloTemporalInd;
 import com.nodo.tpv.data.entities.Mesa;
+import com.nodo.tpv.data.entities.PerfilDuelo;
+import com.nodo.tpv.data.entities.PerfilDueloInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.entities.TipoCliente;
 import com.nodo.tpv.data.entities.Usuario;
 import com.nodo.tpv.data.entities.VentaDetalleHistorial;
 import com.nodo.tpv.data.entities.VentaHistorial;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executors;
 
 @TypeConverters({BigDecimalConverter.class})
@@ -45,7 +52,10 @@ import java.util.concurrent.Executors;
                 VentaHistorial.class,
                 VentaDetalleHistorial.class,
                 DueloTemporal.class,
-                DueloTemporalInd.class
+                DueloTemporalInd.class,
+                PerfilDuelo.class,
+                PerfilDueloInd.class,
+                DetalleDueloTemporalInd.class
         },
         version = 1,
         exportSchema = false
@@ -63,6 +73,11 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract DueloDao dueloDao();
 
     public abstract DueloTemporalIndDao dueloTemporalIndDao();
+
+    public abstract PerfilDueloIndDao perfilDueloIndDao();
+
+    public abstract DetalleDueloTemporalIndDao detalleDueloTemporalIndDao();
+
 
 
 
@@ -86,6 +101,16 @@ public abstract class AppDatabase extends RoomDatabase {
                                 database.tipoClienteDao().insertar(
                                         new TipoCliente(2, "GRUPO")
                                 );
+
+                                List<PerfilDuelo> perfilesIniciales = new ArrayList<>();
+                                perfilesIniciales.add(new PerfilDuelo("POCHOLA / AMIGOS", "TODOS_PAGAN", false));
+                                perfilesIniciales.add(new PerfilDuelo("TORNEO OFICIAL", "GANADOR_SALVA", true));
+                                perfilesIniciales.add(new PerfilDuelo("EL DESAFÍO", "ULTIMO_PAGA", true));
+
+                                // Usamos el DueloDao para insertar estos perfiles
+                                database.dueloDao().insertarPerfilesIniciales(perfilesIniciales);
+
+
                             });
                         }
                     })

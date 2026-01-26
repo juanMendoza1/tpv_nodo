@@ -17,9 +17,20 @@ public class DetallePedido {
     public boolean esApuesta;
     public String idDueloOrigen;
 
+    // 🔥 NUEVA COLUMNA: Vital para que el administrador sepa a dónde despachar
+    public int idMesa;
+
     // 🔥 NUEVA COLUMNA: Guarda por ejemplo "1 - 0"
     public String marcadorAlMomento;
     // 🔥 NUEVA COLUMNA: Para ordenar por tiempo
     //public long fechaRegistro = System.currentTimeMillis();
     public long fechaLong = System.currentTimeMillis();
+
+    public String estado;
+
+    /** * ID del usuario que marcó el producto como entregado.
+     * Si está PENDIENTE, este valor puede ser 0 o nulo.
+     */
+    public int idUsuarioEntrega;
+
 }

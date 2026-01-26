@@ -41,4 +41,8 @@ public interface ClienteDao {
     @Query("DELETE FROM cliente WHERE idCliente = :id")
     void eliminarPorId(int id);
 
+    // 🔥 NUEVA CONSULTA: Obtiene el ID de la mesa de un cliente específico
+    @Query("SELECT idMesa FROM cliente WHERE idCliente = :idCliente LIMIT 1")
+    int obtenerMesaDelCliente(int idCliente);
+
 }

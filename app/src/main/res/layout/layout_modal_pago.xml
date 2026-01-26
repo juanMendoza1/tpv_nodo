@@ -1,139 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="@drawable/bg_bottom_sheet"
-    android:padding="24dp">
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="@drawable/bg_bottom_sheet_pago">
 
-    <LinearLayout
-        android:layout_width="match_parent"
+    <TextView
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:text="Monto a Cobrar"
+        android:textSize="14sp"
+        android:layout_gravity="center"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Finalizar Venta"
-            android:textSize="22sp"
-            android:textStyle="bold"
-            android:textColor="#212121" />
+    <TextView
+        android:id="@+id/tvMontoTotalPago"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="$ 0.00"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="#2E7D32"
+        android:layout_gravity="center"
+        android:layout_marginBottom="24dp"/>
 
-        <TextView
-            android:id="@+id/tvClientePago"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Cliente: Mesa 5"
-            android:textColor="#757575" />
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnPagoEfectivo"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton.Icon"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:text="EFECTIVO"
+        app:icon="@drawable/ic_payments"
+        android:layout_marginBottom="12dp"
+        app:cornerRadius="12dp"/>
 
-        <androidx.cardview.widget.CardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            app:cardBackgroundColor="#F8F9FA"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="0dp">
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnPagoTransferencia"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton.Icon"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:text="TRANSFERENCIA BANCARIA"
+        app:icon="@drawable/ic_account_balance"
+        android:layout_marginBottom="12dp"
+        app:cornerRadius="12dp"/>
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp"
-                android:gravity="center">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="TOTAL A COBRAR"
-                    android:textSize="12sp"
-                    android:letterSpacing="0.1" />
-                <TextView
-                    android:id="@+id/tvMontoTotalPago"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="$ 0.00"
-                    android:textSize="32sp"
-                    android:textStyle="bold"
-                    android:textColor="#2E7D32" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnPagoQR"
+        style="@style/Widget.MaterialComponents.Button.OutlinedButton.Icon"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:text="QR (NEQUI / DAVIPLATA)"
+        app:icon="@drawable/ic_qr_code"
+        app:cornerRadius="12dp"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Seleccione método de pago:"
-            android:textStyle="bold" />
-
-        <GridLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:columnCount="3"
-            android:alignmentMode="alignMargins">
-
-            <LinearLayout
-                android:id="@+id/btnPagoEfectivo"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_columnWeight="1"
-                android:background="?attr/selectableItemBackground"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="12dp">
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:src="@drawable/ic_payments"
-                    app:tint="#4CAF50" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Efectivo"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/btnPagoQR"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_columnWeight="1"
-                android:background="?attr/selectableItemBackground"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="12dp">
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:src="@drawable/ic_qr_code"
-                    app:tint="#2196F3" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="QR / Nequi"
-                    android:textSize="12sp" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/btnPagoTransfer"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_columnWeight="1"
-                android:background="?attr/selectableItemBackground"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="12dp">
-                <ImageView
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:src="@drawable/ic_account_balance"
-                    app:tint="#FF9800" />
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Transf."
-                    android:textSize="12sp" />
-            </LinearLayout>
-        </GridLayout>
-
-    </LinearLayout>
-</androidx.core.widget.NestedScrollView>
+</LinearLayout>

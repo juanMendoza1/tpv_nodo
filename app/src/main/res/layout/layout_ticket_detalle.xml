@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="20dp"
-    android:background="#F0F0F0">
+    android:background="@android:color/transparent">
 
     <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardCornerRadius="0dp"
+        android:layout_margin="16dp"
+        app:cardCornerRadius="24dp"
         app:cardElevation="8dp">
 
         <LinearLayout
@@ -18,90 +18,108 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:padding="24dp"
-            android:background="@android:color/white">
+            android:background="#FFFFFF">
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="BILLAR LA EXCELENCIA"
+                android:text="TICKET DE VENTA"
                 android:textAlignment="center"
                 android:textStyle="bold"
-                android:textSize="18sp"
+                android:textSize="16sp"
                 android:textColor="#212121"/>
 
             <TextView
                 android:id="@+id/tvFechaTicket"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="07/01/2026 10:00 PM"
                 android:textAlignment="center"
                 android:textSize="12sp"
-                android:textColor="#757575"/>
+                android:textColor="#757575"
+                android:layout_marginBottom="16dp"/>
 
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:layout_marginVertical="16dp"
-                android:background="@drawable/bg_divider_dashed" />
+                android:background="#EEEEEE"
+                android:layout_marginBottom="12dp"/>
 
             <TextView
                 android:id="@+id/tvClienteTicket"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="CLIENTE: MESA 5"
+                android:text="CLIENTE: ---"
                 android:textStyle="bold"
-                android:textSize="14sp"/>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvDetalleTicket"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginVertical="16dp" />
-
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#BDBDBD"/>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="16dp">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="TOTAL"
-                    android:textStyle="bold"
-                    android:textSize="20sp"/>
-                <TextView
-                    android:id="@+id/tvTotalTicket"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="$ 0.00"
-                    android:textStyle="bold"
-                    android:textSize="20sp"
-                    android:textColor="#1B5E20"/>
-            </LinearLayout>
+                android:textSize="13sp"
+                android:textColor="#424242"/>
 
             <TextView
                 android:id="@+id/tvMetodoTicket"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="PAGO: QR NEQUI"
-                android:textSize="12sp"
-                android:textStyle="italic"/>
+                android:text="MÉTODO: ---"
+                android:textSize="13sp"
+                android:textColor="#757575"
+                android:layout_marginBottom="12dp"/>
 
-            <Button
-                android:id="@+id/btnCerrarTicket"
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvDetalleTicket"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="VOLVER"
-                style="@style/Widget.MaterialComponents.Button.TextButton"/>
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"/>
 
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="2dp"
+                android:background="#F1F3F4"
+                android:layout_marginVertical="12dp"/>
+
+            <TextView
+                android:id="@+id/tvTotalTicket"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAlignment="center"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:textColor="#1B5E20"
+                android:layout_marginBottom="16dp"/>
+
+            <TextView
+                android:id="@+id/tvLabelComprobante"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="FOTO COMPROBANTE"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:textColor="#1976D2"
+                android:visibility="gone"
+                android:layout_marginBottom="8dp"/>
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardContenedorFoto"
+                android:layout_width="match_parent"
+                android:layout_height="280dp"
+                android:visibility="gone"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="#E0E0E0">
+
+                <ImageView
+                    android:id="@+id/ivFotoTicket"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"/>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCerrarTicket"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:layout_marginTop="20dp"
+                android:text="CERRAR"
+                app:cornerRadius="12dp"
+                style="@style/Widget.MaterialComponents.Button.TextButton"/>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
-</LinearLayout>
+</androidx.core.widget.NestedScrollView>

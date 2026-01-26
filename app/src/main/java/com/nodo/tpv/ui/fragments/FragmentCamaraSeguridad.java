@@ -2,13 +2,24 @@ package com.nodo.tpv.ui.fragments;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Base64;
+import android.util.Log;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AlertDialog;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageCapture;
+import androidx.camera.core.ImageCaptureException;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
@@ -16,25 +27,19 @@ import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
-import androidx.camera.core.ImageCaptureException;
+import androidx.transition.TransitionManager;
 
-import android.util.Base64;
-import android.view.LayoutInflater;
-import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.ImageView;
-import android.widget.Toast;
-
-import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.nodo.tpv.R;
-import com.nodo.tpv.ui.main.MainActivity;
 import com.nodo.tpv.viewmodel.ProductoViewModel;
 
 import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
 import java.nio.ByteBuffer;
-
+import java.text.NumberFormat;
+import java.util.Locale;
 
 public class FragmentCamaraSeguridad extends Fragment {
     private ListenableFuture<ProcessCameraProvider> cameraProviderFuture;
@@ -42,148 +47,188 @@ public class FragmentCamaraSeguridad extends Fragment {
     private ImageCapture imageCapture;
     private ProductoViewModel productoViewModel;
 
-    // Vistas para el intercambio
-    private View layoutPreviewCamara, layoutConfirmacionFoto;
-    private ImageView ivFotoCapturada;
-    private Bitmap bitmapTemporal;
+    private View layoutPreviewCamara, containerBotonesSeleccion, containerConfirmacionFoto, containerDatosPago;
+    private ImageView ivFotoCapturada, ivCodigoQR;
+    private TextView tvTotalMonto, tvTituloDatos, tvInfoBancaria;
+    private FloatingActionButton btnCapture;
+    private MaterialButton btnEfectivo, btnTransferencia, btnQR, btnConfirmarFinal, btnReintentar;
+    private ImageButton btnCerrar;
 
-    // Datos temporales del pago
+    private Bitmap bitmapTemporal;
     private int idCliente;
     private String aliasCliente;
-    private String metodoPago;
+    private String metodoPagoActivo = "EFECTIVO";
+    private BigDecimal montoTotal;
 
-    public FragmentCamaraSeguridad() {
-        // Required empty public constructor
-    }
-
-    public static FragmentCamaraSeguridad newInstance(int id, String alias, String metodo) {
-        FragmentCamaraSeguridad fragment = new FragmentCamaraSeguridad();
-        Bundle args = new Bundle();
-        args.putInt("idCliente", id);
-        args.putString("alias", alias);
-        args.putString("metodo", metodo);
-        fragment.setArguments(args);
-        return fragment;
+    public static FragmentCamaraSeguridad newInstance(int id, String alias, BigDecimal total) {
+        FragmentCamaraSeguridad f = new FragmentCamaraSeguridad();
+        Bundle a = new Bundle();
+        a.putInt("id", id);
+        a.putString("alias", alias);
+        a.putSerializable("monto", total);
+        f.setArguments(a);
+        return f;
     }
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         if (getArguments() != null) {
-            idCliente = getArguments().getInt("idCliente");
+            idCliente = getArguments().getInt("id");
             aliasCliente = getArguments().getString("alias");
-            metodoPago = getArguments().getString("metodo");
+            montoTotal = (BigDecimal) getArguments().getSerializable("monto");
         }
         productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+
+        // REQUERIMIENTO: Solo se puede salir con la X.
+        // Bloqueamos el botón atrás del sistema.
+        OnBackPressedCallback callback = new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                Toast.makeText(getContext(), "Use el botón (X) para salir", Toast.LENGTH_SHORT).show();
+            }
+        };
+        requireActivity().getOnBackPressedDispatcher().addCallback(this, callback);
     }
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View v = inflater.inflate(R.layout.fragment_camara_seguridad, container, false);
 
-        // Inicializar Referencias de UI
+        // Vinculación de UI
         previewView = v.findViewById(R.id.viewFinder);
         layoutPreviewCamara = v.findViewById(R.id.layoutPreviewCamara);
-        layoutConfirmacionFoto = v.findViewById(R.id.layoutConfirmacionFoto);
+        containerBotonesSeleccion = v.findViewById(R.id.containerBotonesSeleccion);
+        containerConfirmacionFoto = v.findViewById(R.id.containerConfirmacionFoto);
+        containerDatosPago = v.findViewById(R.id.containerDatosPago);
+
         ivFotoCapturada = v.findViewById(R.id.ivFotoCapturada);
+        ivCodigoQR = v.findViewById(R.id.ivCodigoQR);
+        tvTotalMonto = v.findViewById(R.id.tvTotalACobrar);
+        tvTituloDatos = v.findViewById(R.id.tvTituloDatos);
+        tvInfoBancaria = v.findViewById(R.id.tvInfoBancaria);
 
-        Button btnReintentar = v.findViewById(R.id.btnReintentar);
-        Button btnConfirmar = v.findViewById(R.id.btnConfirmarVentaFinal);
+        btnEfectivo = v.findViewById(R.id.btnEfectivoCam);
+        btnTransferencia = v.findViewById(R.id.btnTransferenciaCam);
+        btnQR = v.findViewById(R.id.btnQRCam);
+        btnCapture = v.findViewById(R.id.btnCapture);
+        btnConfirmarFinal = v.findViewById(R.id.btnConfirmarFoto);
+        btnReintentar = v.findViewById(R.id.btnReintentarFoto);
+        btnCerrar = v.findViewById(R.id.btnCerrarFragment);
 
-        // Configurar Cámara
-        cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
-        cameraProviderFuture.addListener(() -> {
-            try {
-                ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-                bindPreview(cameraProvider);
-            } catch (Exception e) {
-                if (isAdded()) Toast.makeText(getContext(), "Error al iniciar cámara", Toast.LENGTH_SHORT).show();
-            }
-        }, ContextCompat.getMainExecutor(requireContext()));
+        if (montoTotal != null) {
+            tvTotalMonto.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(montoTotal));
+        }
 
-        // Listener: Capturar foto
-        v.findViewById(R.id.btnCapture).setOnClickListener(view -> capturePhoto());
+        // --- LISTENERS ---
 
-        // Listener: Volver a intentar (Regresa a la cámara)
-        btnReintentar.setOnClickListener(view -> {
-            layoutConfirmacionFoto.setVisibility(View.GONE);
-            layoutPreviewCamara.setVisibility(View.VISIBLE);
-            bitmapTemporal = null;
-        });
+        // Única forma de salir del fragmento
+        btnCerrar.setOnClickListener(view -> requireActivity().getSupportFragmentManager().popBackStack());
 
-        // Listener: Confirmar y Guardar en Base de Datos
-        btnConfirmar.setOnClickListener(view -> {
-            if (bitmapTemporal != null) {
-                String base64Foto = bitmapToBase64(bitmapTemporal);
-                productoViewModel.finalizarCuenta(idCliente, aliasCliente, metodoPago, base64Foto);
-                Toast.makeText(getContext(), "Venta Finalizada con Éxito", Toast.LENGTH_SHORT).show();
-                // Cargar el fragmento de la lista de nuevo en el contenedor del 70%
-                requireActivity().getSupportFragmentManager().beginTransaction()
-                        .replace(R.id.container_fragments, new ListaClientesFragment())
-                        .commit();
-            }
-        });
+        btnEfectivo.setOnClickListener(view -> finalizarPago("EFECTIVO", ""));
+        btnTransferencia.setOnClickListener(view -> configurarInterfazPago("TRANSFERENCIA"));
+        btnQR.setOnClickListener(view -> configurarInterfazPago("QR_DIGITAL"));
+        btnCapture.setOnClickListener(view -> capturePhoto());
+        btnReintentar.setOnClickListener(view -> resetearCaptura());
+        btnConfirmarFinal.setOnClickListener(view -> finalizarPago(metodoPagoActivo, bitmapToBase64(bitmapTemporal)));
 
         return v;
     }
 
-    private void bindPreview(@NonNull ProcessCameraProvider cameraProvider) {
-        Preview preview = new Preview.Builder().build();
-        CameraSelector cameraSelector = new CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_FRONT).build();
+    private void configurarInterfazPago(String metodo) {
+        metodoPagoActivo = metodo;
+        TransitionManager.beginDelayedTransition((ViewGroup) getView());
 
-        preview.setSurfaceProvider(previewView.getSurfaceProvider());
+        layoutPreviewCamara.setVisibility(View.VISIBLE);
+        containerBotonesSeleccion.setVisibility(View.GONE);
+        containerDatosPago.setVisibility(View.VISIBLE);
+        btnCapture.setVisibility(View.VISIBLE);
 
-        imageCapture = new ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .setTargetRotation(requireView().getDisplay().getRotation())
-                .build();
+        if (metodo.equals("TRANSFERENCIA")) {
+            tvTituloDatos.setText("DATOS PARA TRANSFERIR");
+            tvTituloDatos.setTextColor(Color.parseColor("#1976D2"));
+            String infoPro = "BANCO: NEQUI\nCUENTA: Ahorros\nNÚMERO: 310 123 4567\nTITULAR: Juan Mendoza\nCC: 1.234.567.890";
+            tvInfoBancaria.setText(infoPro);
+            tvInfoBancaria.setVisibility(View.VISIBLE);
+            ivCodigoQR.setVisibility(View.GONE);
+        } else {
+            tvTituloDatos.setText("ESCANEE EL CÓDIGO QR");
+            tvTituloDatos.setTextColor(Color.parseColor("#6A1B9A"));
+            tvInfoBancaria.setVisibility(View.GONE);
+            ivCodigoQR.setVisibility(View.VISIBLE);
+            ivCodigoQR.setImageResource(R.drawable.image_qr_ok);
+        }
+        iniciarCamara();
+    }
 
-        cameraProvider.unbindAll();
-        cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture);
+    private void iniciarCamara() {
+        cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
+        cameraProviderFuture.addListener(() -> {
+            try {
+                ProcessCameraProvider cp = cameraProviderFuture.get();
+                bindPreview(cp);
+            } catch (Exception e) { Log.e("CAM", "Error hardware"); }
+        }, ContextCompat.getMainExecutor(requireContext()));
+    }
+
+    private void bindPreview(ProcessCameraProvider cp) {
+        Preview p = new Preview.Builder().build();
+        CameraSelector s = new CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_BACK).build();
+        p.setSurfaceProvider(previewView.getSurfaceProvider());
+        imageCapture = new ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).build();
+        cp.unbindAll();
+        cp.bindToLifecycle(this, s, p, imageCapture);
     }
 
     private void capturePhoto() {
         if (imageCapture == null) return;
-
-        imageCapture.takePicture(ContextCompat.getMainExecutor(requireContext()),
-                new ImageCapture.OnImageCapturedCallback() {
-                    @Override
-                    public void onCaptureSuccess(@NonNull ImageProxy image) {
-                        bitmapTemporal = imageProxyToBitmap(image);
-                        image.close();
-
-                        if (bitmapTemporal != null && isAdded()) {
-                            // Cambiar a la vista de confirmación en el hilo principal
-                            requireActivity().runOnUiThread(() -> {
-                                ivFotoCapturada.setImageBitmap(bitmapTemporal);
-                                layoutPreviewCamara.setVisibility(View.GONE);
-                                layoutConfirmacionFoto.setVisibility(View.VISIBLE);
-                            });
-                        }
-                    }
-
-                    @Override
-                    public void onError(@NonNull ImageCaptureException exception) {
-                        if (isAdded() && getContext() != null) {
-                            Toast.makeText(getContext(), "Error: " + exception.getMessage(), Toast.LENGTH_SHORT).show();
-                        }
-                    }
+        imageCapture.takePicture(ContextCompat.getMainExecutor(requireContext()), new ImageCapture.OnImageCapturedCallback() {
+            @Override
+            public void onCaptureSuccess(@NonNull ImageProxy image) {
+                bitmapTemporal = imageProxyToBitmap(image);
+                image.close();
+                requireActivity().runOnUiThread(() -> {
+                    ivFotoCapturada.setImageBitmap(bitmapTemporal);
+                    ivFotoCapturada.setVisibility(View.VISIBLE);
+                    previewView.setVisibility(View.GONE);
+                    btnCapture.setVisibility(View.GONE);
+                    containerConfirmacionFoto.setVisibility(View.VISIBLE);
                 });
+            }
+        });
+    }
+
+    private void finalizarPago(String metodo, String foto) {
+        productoViewModel.finalizarCuenta(idCliente, aliasCliente, metodo, foto);
+        requireActivity().getSupportFragmentManager().popBackStack();
+    }
+
+    private void resetearCaptura() {
+        TransitionManager.beginDelayedTransition((ViewGroup) getView());
+        bitmapTemporal = null;
+        layoutPreviewCamara.setVisibility(View.INVISIBLE);
+        ivFotoCapturada.setVisibility(View.GONE);
+        previewView.setVisibility(View.VISIBLE);
+        containerDatosPago.setVisibility(View.GONE);
+        containerConfirmacionFoto.setVisibility(View.GONE);
+        containerBotonesSeleccion.setVisibility(View.VISIBLE);
+        btnCapture.setVisibility(View.GONE);
+        if (cameraProviderFuture != null) {
+            try { cameraProviderFuture.get().unbindAll(); } catch (Exception e) {}
+        }
     }
 
     private Bitmap imageProxyToBitmap(ImageProxy image) {
-        ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-        byte[] bytes = new byte[buffer.remaining()];
-        buffer.get(bytes);
+        ByteBuffer b = image.getPlanes()[0].getBuffer();
+        byte[] bytes = new byte[b.remaining()];
+        b.get(bytes);
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
     }
 
-    private String bitmapToBase64(Bitmap bitmap) {
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        // 60% es suficiente para ver un comprobante y ahorra mucha memoria
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 60, outputStream);
-        byte[] byteArray = outputStream.toByteArray();
-        return Base64.encodeToString(byteArray, Base64.NO_WRAP);
+    private String bitmapToBase64(Bitmap b) {
+        if (b == null) return "";
+        ByteArrayOutputStream s = new ByteArrayOutputStream();
+        b.compress(Bitmap.CompressFormat.JPEG, 60, s);
+        return Base64.encodeToString(s.toByteArray(), Base64.NO_WRAP);
     }
 }

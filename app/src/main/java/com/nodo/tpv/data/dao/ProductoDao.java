@@ -26,4 +26,18 @@ public interface ProductoDao {
 
     @Query("SELECT COUNT(*) FROM producto")
     int getProductoCount();
+
+    @Query("SELECT p.* FROM producto p " +
+            "INNER JOIN detalle_pedido dp ON p.idProducto = dp.idProducto " +
+            "WHERE dp.idDueloOrigen = :uuid " +
+            "AND dp.estado = 'ENTREGADO' " +
+            "AND dp.idCliente = 0")
+    List<Producto> obtenerProductosBolsaEntregados(String uuid);
+
+    @Query("SELECT p.* FROM producto p " +
+            "INNER JOIN detalle_pedido dp ON p.idProducto = dp.idProducto " +
+            "WHERE dp.idDueloOrigen = :uuid " +
+            "AND dp.estado = 'ENTREGADO' " +
+            "AND dp.idCliente = 0") // <--- ESTO ES LO QUE EVITA LA DUPLICACIÓN
+    List<Producto> obtenerProductosEntregadosDuelo(String uuid);
 }

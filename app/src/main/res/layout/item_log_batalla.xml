@@ -1,19 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:padding="8dp"
-    android:weightSum="10">
+    android:orientation="vertical"
+    android:paddingHorizontal="12dp">
 
-    <TextView android:id="@+id/txtMarcador" android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="2" android:text="1-0" android:textColor="#FFD600" android:textStyle="bold"/>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingVertical="10dp">
 
-    <TextView android:id="@+id/txtEquipo" android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="2" android:text="🔵" android:gravity="center"/>
+        <View
+            android:id="@+id/viewColorEquipo"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:background="@drawable/bg_circle_white" />
 
-    <TextView android:id="@+id/txtProducto" android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="4" android:text="Cerveza..." android:textColor="#FFFFFF" android:maxLines="1" android:ellipsize="end"/>
+        <TextView
+            android:id="@+id/txtEquipo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textStyle="bold"
+            android:textSize="11sp" />
 
-    <TextView android:id="@+id/txtValor" android:layout_width="0dp" android:layout_height="wrap_content"
-        android:layout_weight="2" android:text="$5.000" android:textColor="#00E5FF" android:gravity="end"/>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/txtProducto"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="normal" />
+
+            <TextView
+                android:id="@+id/txtMarcador"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#80FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/txtValor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFD600"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:alpha="0.1"
+        android:background="#FFFFFF" />
 </LinearLayout>

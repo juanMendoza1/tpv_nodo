@@ -160,8 +160,8 @@ public class ClienteAdapter extends RecyclerView.Adapter<ClienteAdapter.ClienteV
         return listaClientes.size();
     }
 
-    class ClienteViewHolder extends RecyclerView.ViewHolder {
-        TextView tvAlias, tvTipo, tvAmount;
+    protected class ClienteViewHolder extends RecyclerView.ViewHolder {
+        public TextView tvAlias, tvTipo, tvAmount;
         ImageView ivIcono;
         ImageButton btnVer, btnAdd, btnPay;
         View bgIcono;

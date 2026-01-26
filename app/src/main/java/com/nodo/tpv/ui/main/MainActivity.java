@@ -246,7 +246,7 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
                 .commit();
     }
 
-    public void abrirCamaraIntegrada(int idCliente, String alias, String metodo) {
+    /*public void abrirCamaraIntegrada(int idCliente, String alias, String metodo) {
         FragmentCamaraSeguridad fragment = FragmentCamaraSeguridad.newInstance(idCliente, alias, metodo);
         getSupportFragmentManager().beginTransaction()
                 .setCustomAnimations(R.anim.slide_in_right, R.anim.slide_out_left,
@@ -254,5 +254,5 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
                 .replace(R.id.container_fragments, fragment)
                 .addToBackStack(null)
                 .commit();
-    }
+    }*/
 }

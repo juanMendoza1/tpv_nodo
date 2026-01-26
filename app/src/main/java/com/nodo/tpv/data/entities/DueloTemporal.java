@@ -24,11 +24,20 @@ public class DueloTemporal {
     public boolean esGanador;
     public String estado;  // "ACTIVO" o "FINALIZADO"
 
-    public DueloTemporal(String idDuelo, int idEquipo, int idCliente, String estado) {
+    // 🔥 NUEVOS CAMPOS DE CONFIGURACIÓN POR DUELO
+    public String reglaCobro; // Se inicializa con "GANADOR_SALVA"
+    public boolean requierePin; // Se inicializa en true
+    public int idMesa; // Para saber en qué mesa ocurre este duelo
+
+    public DueloTemporal(String idDuelo, int idEquipo, int idCliente, String estado, int idMesa) {
         this.idDuelo = idDuelo;
         this.idEquipo = idEquipo;
         this.idCliente = idCliente;
         this.estado = estado;
+        this.idMesa = idMesa;
         this.esGanador = false;
+        // Valores por defecto que pediste
+        this.reglaCobro = "GANADOR_SALVA";
+        this.requierePin = true;
     }
 }

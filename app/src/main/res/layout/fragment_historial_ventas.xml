@@ -7,24 +7,27 @@
     android:background="#F8F9FA">
 
     <com.google.android.material.card.MaterialCardView
+        android:id="@+id/cardTotalesDashboard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="4dp">
+        android:layout_margin="12dp"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="6dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="20dp"
-            android:background="#1B5E20"> <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="TOTAL RECAUDADO HOY"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:letterSpacing="0.1" />
+            android:padding="16dp"
+            android:background="#1B5E20">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TOTAL RECAUDADO HOY"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:letterSpacing="0.1" />
 
             <TextView
                 android:id="@+id/tvTotalDia"
@@ -32,78 +35,225 @@
                 android:layout_height="wrap_content"
                 android:text="$ 0.00"
                 android:textColor="#FFFFFF"
-                android:textSize="32sp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:background="#4CAF50"
-                android:layout_marginVertical="12dp" />
-
             <LinearLayout
+                android:id="@+id/layoutDashboardExtra"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:orientation="vertical">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#4CAF50"
+                    android:layout_marginVertical="8dp" />
 
                 <LinearLayout
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="EFECTIVO"
-                        android:textColor="#C8E6C9"
-                        android:textSize="10sp"/>
-                    <TextView
-                        android:id="@+id/tvTotalEfectivo"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="$ 0"
-                        android:textColor="#FFFFFF"
-                        android:textStyle="bold"/>
-                </LinearLayout>
+                    android:orientation="horizontal">
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="DIGITAL (QR/TRANS)"
-                        android:textColor="#C8E6C9"
-                        android:textSize="10sp"/>
-                    <TextView
-                        android:id="@+id/tvTotalDigital"
-                        android:layout_width="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="EFECTIVO"
+                            android:textColor="#C8E6C9"
+                            android:textSize="9sp"/>
+                        <TextView
+                            android:id="@+id/tvTotalEfectivo"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="$ 0"
+                            android:textColor="#FFFFFF"
+                            android:textSize="14sp"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:text="$ 0"
-                        android:textColor="#FFFFFF"
-                        android:textStyle="bold"/>
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="DIGITAL (QR/TRANS)"
+                            android:textColor="#C8E6C9"
+                            android:textSize="9sp"/>
+                        <TextView
+                            android:id="@+id/tvTotalDigital"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="$ 0"
+                            android:textColor="#FFFFFF"
+                            android:textSize="14sp"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="MOVIMIENTOS RECIENTES"
-        android:layout_marginStart="20dp"
-        android:layout_marginBottom="8dp"
-        android:textSize="12sp"
-        android:textStyle="bold"
-        android:textColor="#757575"/>
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvHistorial"
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/layoutDetalleVentaIntegrado"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:clipToPadding="false"
-        android:paddingBottom="20dp"/>
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="12dp"
+        android:visibility="gone"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="20dp"
+            android:background="#FFFFFF">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AUDITORÍA DE VENTA"
+                    android:textStyle="bold"
+                    android:textColor="#212121"
+                    android:textSize="16sp"/>
+                <ImageButton
+                    android:id="@+id/btnVolverALista"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_alignParentEnd="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_close"
+                    app:tint="#D32F2F" />
+            </RelativeLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:layout_marginTop="8dp"
+                android:baselineAligned="false">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="0.6"
+                    android:orientation="vertical"
+                    android:paddingEnd="12dp">
+
+                    <TextView
+                        android:id="@+id/tvInfoVentaIntegrada"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#757575"
+                        android:textSize="11sp"
+                        android:layout_marginBottom="12dp"/>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="ITEMS"
+                        android:textSize="9sp"
+                        android:textStyle="bold"
+                        android:textColor="#BDBDBD"/>
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rvDetalleVentaUnica"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scrollbars="vertical"/>
+                </LinearLayout>
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="0.4">
+
+                    <LinearLayout
+                        android:id="@+id/layoutEvidenciaIntegrada"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="EVIDENCIA"
+                            android:textSize="9sp"
+                            android:textStyle="bold"
+                            android:textColor="#1976D2"
+                            android:layout_marginBottom="6dp"/>
+
+                        <com.google.android.material.card.MaterialCardView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            app:cardCornerRadius="16dp"
+                            app:cardElevation="8dp"
+                            app:strokeWidth="1dp"
+                            app:strokeColor="#F1F3F4">
+                            <ImageView
+                                android:id="@+id/ivFotoEvidenciaIntegrada"
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:scaleType="centerCrop"
+                                android:background="#F8F9FA"/>
+                        </com.google.android.material.card.MaterialCardView>
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/layoutNoFotoMsg"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:visibility="visible">
+                        <ImageView
+                            android:layout_width="64dp"
+                            android:layout_height="64dp"
+                            android:src="@drawable/ic_payments"
+                            app:tint="#EEEEEE"/>
+                    </LinearLayout>
+                </FrameLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <LinearLayout
+        android:id="@+id/layoutListaHistorial"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="MOVIMIENTOS RECIENTES"
+            android:layout_marginStart="16dp"
+            android:layout_marginBottom="8dp"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:textColor="#757575"/>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvHistorial"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingHorizontal="12dp"
+            android:paddingBottom="16dp"/>
+    </LinearLayout>
 
 </LinearLayout>

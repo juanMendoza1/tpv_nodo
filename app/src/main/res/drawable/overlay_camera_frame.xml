@@ -1,0 +1,30 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Fondo oscuro -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#000000"/>
+        </shape>
+    </item>
+
+    <!-- Hueco transparente central -->
+    <item
+        android:left="32dp"
+        android:top="120dp"
+        android:right="32dp"
+        android:bottom="120dp">
+
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent"/>
+
+            <!-- Borde del marco -->
+            <stroke
+                android:width="2dp"
+                android:color="#FFFFFF"/>
+
+            <corners android:radius="16dp"/>
+        </shape>
+
+    </item>
+
+</layer-list>

@@ -11,14 +11,18 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Transformations;
 
 import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.dto.DetalleConNombre;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
+import com.nodo.tpv.data.dto.LogAgrupadoDTO;
 import com.nodo.tpv.data.entities.Cliente;
+import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DetallePedido;
 import com.nodo.tpv.data.entities.DueloTemporal;
 import com.nodo.tpv.data.entities.DueloTemporalInd;
+import com.nodo.tpv.data.entities.PerfilDueloInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.entities.VentaDetalleHistorial;
 import com.nodo.tpv.data.entities.VentaHistorial;
@@ -61,6 +65,8 @@ public class ProductoViewModel extends AndroidViewModel {
     private String uuidDueloActual = null;
 
     private List<Cliente> todosLosParticipantesDuelo = new ArrayList<>();
+
+    private int idMesaActual;
 
     // --- NUEVOS ESTADOS PARA ARENA MULTIEQUIPO ---
 // Mapa para saber qué color tiene cada cliente en la arena: <IdCliente, ColorResId>
@@ -109,6 +115,7 @@ public class ProductoViewModel extends AndroidViewModel {
     public LiveData<String> getReglaPagoInd() { return reglaPagoInd; }
     public LiveData<Integer> getMetaCarambolasInd() { return metaCarambolasInd; }
 
+
     // --- CONFIGURACIÓN DE MESA ---
     public void setTipoJuego(String tipo) { tipoJuegoActual.postValue(tipo); }
 
@@ -150,47 +157,151 @@ public class ProductoViewModel extends AndroidViewModel {
     public void setMetaCarambolasInd(int meta) { metaCarambolasInd.postValue(meta); }
 
     public void iniciarDueloIndPersistente(List<Cliente> clientes, int idMesa) {
+        // 1. Preparación inmediata de la caché en memoria para la UI
+        this.idMesaActual = idMesa;
         this.integrantesAzulCacheados = new ArrayList<>(clientes);
         this.tipoJuegoActual.postValue("3BANDAS");
         this.enModoDuelo.postValue(true);
-        this.scoresIndividualesInd.postValue(new HashMap<>());
-        this.tiempoInicioDuelo.postValue(System.currentTimeMillis());
 
         executorService.execute(() -> {
-            uuidDueloActual = UUID.randomUUID().toString();
-            for (Cliente c : clientes) {
-                DueloTemporalInd dueloInd = new DueloTemporalInd(
-                        uuidDueloActual, idMesa, c.idCliente,
-                        metaCarambolasInd.getValue(), reglaPagoInd.getValue());
-                db.dueloTemporalIndDao().insertarOActualizar(dueloInd);
+            // 2. RECUPERAR O GENERAR EL UUID DEL DUELO
+            // Es vital que uuidDueloActual tenga valor antes de disparar el dbTrigger
+            String uuidExistente = db.dueloDao().obtenerUuidDueloActivoInd();
+            if (uuidExistente != null) {
+                this.uuidDueloActual = uuidExistente;
+            } else {
+                this.uuidDueloActual = UUID.randomUUID().toString();
             }
-            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+
+            // 3. PERSISTENCIA INDIVIDUAL DE JUGADORES
+            for (Cliente c : clientes) {
+                DueloTemporalInd existente = db.dueloTemporalIndDao().obtenerEstadoCliente(idMesa, c.idCliente);
+
+                if (existente == null) {
+                    // Si es nuevo en la mesa, creamos su registro con su propio tiempo de entrada
+                    DueloTemporalInd nuevo = new DueloTemporalInd(
+                            this.uuidDueloActual,
+                            idMesa,
+                            c.idCliente,
+                            20, // Meta inicial
+                            "PERDEDORES" // Regla por defecto
+                    );
+                    nuevo.timestampInicio = System.currentTimeMillis();
+                    db.dueloTemporalIndDao().insertarOActualizar(nuevo);
+                }
+            }
+
+            // 4. NOTIFICACIÓN FINAL A LA UI
+            mainThreadHandler.post(() -> {
+                // Esto dispara todos los observadores del Fragment (Bolsa, Badge, Cronómetros)
+                this.dbTrigger.setValue(System.currentTimeMillis());
+                Log.d("ARENA_DUELO", "Duelo Individual iniciado/recuperado: " + this.uuidDueloActual);
+            });
         });
     }
 
-    public void aplicarDanioInd(int idClienteAnotador, List<Cliente> todosLosClientes) {
-        List<Producto> apuesta = listaApuesta.getValue();
-        if (apuesta == null || apuesta.isEmpty() || uuidDueloActual == null) return;
+    // Dentro de ProductoViewModel.java
 
-        Map<Integer, Integer> scores = scoresIndividualesInd.getValue();
-        if (scores == null) scores = new HashMap<>();
-        int nuevoScore = (scores.containsKey(idClienteAnotador) ? scores.get(idClienteAnotador) : 0) + 1;
-        scores.put(idClienteAnotador, nuevoScore);
-        scoresIndividualesInd.postValue(scores);
+    // Dentro de ProductoViewModel.java
 
-        List<Cliente> victimas = new ArrayList<>();
-        String regla = reglaPagoInd.getValue();
+    public void aplicarDanioInd(int idClienteAnotador, List<Cliente> todosLosParticipantes, Map<Integer, Integer> miniMarcadoresSnapshot) {
+        if (uuidDueloActual == null) return;
 
-        if ("PERDEDORES".equals(regla)) {
-            for (Cliente c : todosLosClientes) if (c.idCliente != idClienteAnotador) victimas.add(c);
-        } else if ("TODOS".equals(regla)) {
-            victimas.addAll(todosLosClientes);
-        }
+        // 🔥 SEGURIDAD: Clonamos el mapa inmediatamente para que el hilo de fondo
+        // vea los valores exactos de este preciso momento.
+        final Map<Integer, Integer> copiaMinis = new HashMap<>(miniMarcadoresSnapshot);
 
-        if (!victimas.isEmpty()) registrarConsumoDistribuido(victimas, apuesta, "Punto Cliente: " + idClienteAnotador);
+        executorService.execute(() -> {
+            // 1. Obtener cabecera para score global + 1
+            DueloTemporalInd cabecera = db.dueloTemporalIndDao().obtenerDueloPorMesaYCliente(idMesaActual, idClienteAnotador);
+            if (cabecera == null) return;
+            int nuevoScoreGlobal = cabecera.score + 1;
 
-        executorService.execute(() -> db.dueloTemporalIndDao().actualizarScore(0, idClienteAnotador, nuevoScore));
-        limpiarApuesta();
+            db.runInTransaction(() -> {
+                // 2. Actualizar score global en DB
+                db.dueloTemporalIndDao().actualizarScore(idMesaActual, idClienteAnotador, nuevoScoreGlobal);
+
+                // 3. Construir la "Foto" de TODOS los minimarcadores
+                StringBuilder sbMini = new StringBuilder();
+                for (int i = 0; i < todosLosParticipantes.size(); i++) {
+                    Cliente c = todosLosParticipantes.get(i);
+                    // Usamos la COPIA para asegurar que no leamos un 0 si el Fragment ya reseteó
+                    int valorCarambolas = copiaMinis.getOrDefault(c.idCliente, 0);
+
+                    sbMini.append(c.alias).append(": ").append(valorCarambolas);
+                    if (i < todosLosParticipantes.size() - 1) sbMini.append(" | ");
+                }
+
+                // 4. INSERTAR EL HITO "FUERTE"
+                DetalleDueloTemporalInd hito = new DetalleDueloTemporalInd(
+                        uuidDueloActual,
+                        idMesaActual,
+                        idClienteAnotador,
+                        obtenerAliasCliente(idClienteAnotador),
+                        nuevoScoreGlobal,
+                        sbMini.toString(), // Aquí va la cadena: "Juan: 20 | Pedro: 15..."
+                        obtenerMarcadorActualString()
+                );
+                db.detalleDueloTemporalIndDao().insertarHito(hito);
+
+                // 5. REPARTO DE BOLSA (Solo lo ENTREGADO)
+                List<DetallePedido> bolsa = db.detallePedidoDao().obtenerMunicionBolsaParaReparto(uuidDueloActual);
+                if (bolsa != null && !bolsa.isEmpty()) {
+                    List<Integer> victimas = identificarIdsVictimasInd(idClienteAnotador, todosLosParticipantes);
+                    BigDecimal divisor = new BigDecimal(victimas.size());
+
+                    for (DetallePedido item : bolsa) {
+                        BigDecimal precioRepartido = item.precioEnVenta.divide(divisor, 0, RoundingMode.HALF_UP);
+                        for (Integer idV : victimas) {
+                            DetallePedido dpNuevo = new DetallePedido();
+                            dpNuevo.idCliente = idV;
+                            dpNuevo.idProducto = item.idProducto;
+                            dpNuevo.idMesa = idMesaActual;
+                            dpNuevo.idDueloOrigen = uuidDueloActual;
+                            dpNuevo.cantidad = 1;
+                            dpNuevo.precioEnVenta = precioRepartido;
+                            dpNuevo.esApuesta = true;
+                            dpNuevo.estado = "REGISTRADO";
+                            dpNuevo.fechaLong = System.currentTimeMillis();
+                            dpNuevo.marcadorAlMomento = "PT_" + nuevoScoreGlobal + "_" + hito.aliasAnotador;
+                            db.detallePedidoDao().insertarDetalle(dpNuevo);
+                        }
+                        db.detallePedidoDao().borrarDetallePorId(item.idDetalle);
+                    }
+                }
+            });
+
+            // 6. Refrescar UI
+            mainThreadHandler.post(() -> {
+                Map<Integer, Integer> scoresActuales = scoresIndividualesInd.getValue();
+                Map<Integer, Integer> copiaGlobales = (scoresActuales == null) ? new HashMap<>() : new HashMap<>(scoresActuales);
+                copiaGlobales.put(idClienteAnotador, nuevoScoreGlobal);
+                scoresIndividualesInd.setValue(copiaGlobales);
+                dbTrigger.setValue(System.currentTimeMillis());
+            });
+        });
+    }
+
+    // Agrega el parámetro idMesa a la firma de la función
+    private void actualizarPuntajeIndividualDinamico(int idMesa, int idCliente) {
+        executorService.execute(() -> {
+            // Ahora idMesa es accesible porque viene por parámetro
+            DueloTemporalInd duelo = db.dueloTemporalIndDao().obtenerDueloPorMesaYCliente(idMesa, idCliente);
+
+            if (duelo != null) {
+                duelo.score = duelo.score + 1;
+                db.dueloTemporalIndDao().actualizar(duelo);
+
+                mainThreadHandler.post(() -> {
+                    Map<Integer, Integer> currentScores = scoresIndividualesInd.getValue();
+                    Map<Integer, Integer> copia = (currentScores == null) ? new HashMap<>() : new HashMap<>(currentScores);
+                    copia.put(idCliente, duelo.score);
+                    scoresIndividualesInd.setValue(copia);
+
+                    dbTrigger.setValue(System.currentTimeMillis());
+                });
+            }
+        });
     }
 
     // --- LÓGICA DE BOLSA (APUESTA) ---
@@ -212,13 +323,33 @@ public class ProductoViewModel extends AndroidViewModel {
 
     public void insertarConsumoDirecto(int idCliente, Producto producto, int cantidad) {
         executorService.execute(() -> {
+            // 1. Obtener datos básicos
+            int idMesa = db.clienteDao().obtenerMesaDelCliente(idCliente);
+            String uuidDuelo = db.dueloDao().obtenerUuidDueloActivo(); // Buscamos si hay un duelo en curso
+
+            // 2. Crear el objeto DetallePedido
             DetallePedido dp = new DetallePedido();
             dp.idCliente = idCliente;
             dp.idProducto = producto.idProducto;
+            dp.idMesa = idMesa;
             dp.cantidad = cantidad;
             dp.precioEnVenta = producto.getPrecioProducto();
-            dp.esApuesta = false;
             dp.fechaLong = System.currentTimeMillis();
+            dp.estado = "PENDIENTE"; // Siempre nace pendiente para el Badge
+
+            // 3. VÍNCULO CON EL DUELO (Lo que pediste)
+            // Verificamos si este cliente pertenece al duelo activo
+            boolean clienteEnDuelo = db.dueloDao().verificarClienteEnDuelo(uuidDuelo, idCliente);
+
+            if (clienteEnDuelo) {
+                dp.esApuesta = true; // Se marca como parte de la deuda del duelo
+                dp.idDueloOrigen = uuidDuelo;
+                dp.marcadorAlMomento = obtenerMarcadorActualString(); // Guardamos el marcador actual
+            } else {
+                dp.esApuesta = false; // Es un consumo normal fuera de duelo
+            }
+
+            // 4. Insertar y Notificar
             db.detallePedidoDao().insertarDetalle(dp);
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
@@ -264,33 +395,55 @@ public class ProductoViewModel extends AndroidViewModel {
     }
 
     // --- CIERRE DE CUENTA E HISTORIAL ---
-    public void finalizarCuenta(int id, String alias, String metodo, String foto) {
+    public void finalizarCuenta(int id, String alias, String metodo, String fotoBase64) {
         executorService.execute(() -> {
+            // 1. Obtener los datos actuales del cliente antes de borrarlos
             BigDecimal total = db.detallePedidoDao().obtenerTotalDirecto(id);
             List<DetalleConNombre> consumos = db.detallePedidoDao().obtenerDetalleConNombresSincrono(id);
 
-            if (total != null && total.compareTo(BigDecimal.ZERO) > 0) {
-                VentaHistorial vH = new VentaHistorial();
-                vH.idCliente = id; vH.nombreCliente = alias; vH.montoTotal = total;
-                vH.metodoPago = metodo; vH.fechaLong = System.currentTimeMillis();
-                vH.estado = "COMPLETADO"; vH.fotoComprobante = foto;
+            // 2. Validar que existan consumos para procesar la venta
+            if (total != null && total.compareTo(BigDecimal.ZERO) > 0 && consumos != null) {
 
-                long idV = db.detallePedidoDao().insertarVentaHistorial(vH);
-                List<VentaDetalleHistorial> listaDetalles = new ArrayList<>();
-                for (DetalleConNombre it : consumos) {
-                    VentaDetalleHistorial dH = new VentaDetalleHistorial();
-                    dH.idVentaPadre = (int) idV;
-                    dH.nombreProducto = it.nombreProducto;
-                    dH.cantidad = it.detallePedido.cantidad;
-                    dH.precioUnitario = it.detallePedido.precioEnVenta;
-                    dH.esApuesta = it.detallePedido.esApuesta;
-                    listaDetalles.add(dH);
+                // --- PASO A: Crear la Venta Principal (Padre) ---
+                VentaHistorial vH = new VentaHistorial();
+                vH.idCliente = id;
+                vH.nombreCliente = alias;
+                vH.montoTotal = total;
+                vH.metodoPago = metodo;
+                vH.fechaLong = System.currentTimeMillis();
+                vH.estado = "PENDIENTE"; // Crítico para auditoría posterior
+                vH.fotoComprobante = fotoBase64; // String Base64 capturado
+
+                // Insertamos y recuperamos el ID autogenerado
+                long idVentaPadre = db.detallePedidoDao().insertarVentaHistorial(vH);
+
+                // --- PASO B: Migrar detalles al historial ---
+                List<VentaDetalleHistorial> listaDetallesHistorial = new ArrayList<>();
+
+                for (DetalleConNombre item : consumos) {
+                    VentaDetalleHistorial vDet = new VentaDetalleHistorial();
+                    vDet.idVentaPadre = (int) idVentaPadre;
+                    vDet.nombreProducto = item.nombreProducto;
+                    vDet.cantidad = item.detallePedido.cantidad;
+                    vDet.precioUnitario = item.detallePedido.precioEnVenta;
+
+                    // Mapear si es apuesta
+                    // Asumiendo que DetallePedido tiene el campo esApuesta
+                    vDet.esApuesta = item.detallePedido.esApuesta;
+
+                    listaDetallesHistorial.add(vDet);
                 }
-                db.detallePedidoDao().insertarDetallesHistorial(listaDetalles);
+
+                // Insertar todos los detalles en bloque para optimizar la DB
+                db.detallePedidoDao().insertarDetallesHistorial(listaDetallesHistorial);
+
+                // --- PASO C: Limpiar datos temporales ---
+                db.detallePedidoDao().borrarCuentaCliente(id);
+                db.clienteDao().eliminarPorId(id);
+
+                // Notificar a la UI para refrescar pantallas
+                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
             }
-            db.detallePedidoDao().borrarCuentaCliente(id);
-            db.clienteDao().eliminarPorId(id);
-            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 
@@ -303,7 +456,7 @@ public class ProductoViewModel extends AndroidViewModel {
 
     // --- GESTIÓN DE LA ARENA ---
 
-    public void iniciarDueloPersistente(List<Cliente> azul, List<Cliente> rojo, String tipo) {
+    /*public void iniciarDueloPersistente(List<Cliente> azul, List<Cliente> rojo, String tipo) {
         this.integrantesAzulCacheados = new ArrayList<>(azul);
         this.integrantesRojoCacheados = new ArrayList<>(rojo);
         this.tipoJuegoActual.postValue(tipo);
@@ -320,13 +473,18 @@ public class ProductoViewModel extends AndroidViewModel {
             } else { uuidDueloActual = uuidExistente; }
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
-    }
+    }*/
 
-    public void finalizarDueloCompleto() {
+    public void finalizarDueloCompleto(int idMesa, String tipoJuego) {
         executorService.execute(() -> {
-            // 1. Limpieza en Base de Datos
-            db.dueloDao().finalizarDueloActual();
-            db.dueloTemporalIndDao().finalizarDueloMesa(0);
+            // 1. Limpieza en Base de Datos diferenciada
+            if ("POOL".equals(tipoJuego)) {
+                // Finaliza registros en la tabla duelos_temporales
+                db.dueloDao().finalizarDueloActual();
+            } else if ("3BANDAS".equals(tipoJuego)) {
+                // Finaliza registros en la tabla duelos_temporales_ind usando el ID real
+                db.dueloTemporalIndDao().finalizarDueloMesa(idMesa);
+            }
 
             mainThreadHandler.post(() -> {
                 // 2. Control de Estado General
@@ -335,26 +493,25 @@ public class ProductoViewModel extends AndroidViewModel {
                 tiempoInicioDuelo.setValue(0L);
 
                 // 3. Limpieza de Arena Dinámica (POOL MULTIEQUIPO)
-                // Es vital limpiar estos para desbloquear los botones de pago en la lista
                 mapaColoresDuelo.setValue(new HashMap<>());
                 scoresEquipos.setValue(new HashMap<>());
 
-                // 4. Limpieza de Arena Clásica (Compatibilidad)
+                // 4. Limpieza de Arena Clásica y Caché de integrantes
                 scoreAzul.setValue(0);
                 scoreRojo.setValue(0);
-                integrantesAzulCacheados.clear();
-                integrantesRojoCacheados.clear();
+                if (integrantesAzulCacheados != null) integrantesAzulCacheados.clear();
+                if (integrantesRojoCacheados != null) integrantesRojoCacheados.clear();
 
-                // 5. Limpieza de Arena 3 BANDAS
+                // 5. Limpieza de Arena 3 BANDAS (Score Individual)
                 scoresIndividualesInd.setValue(new HashMap<>());
 
-                // 6. Limpieza de Bolsa
+                // 6. Limpieza de Bolsa de munición/apuesta
                 limpiarApuesta();
 
-                // 7. Notificar a la UI para refrescar todo
+                // 7. Gatillo de actualización global (Refresca Badge, Listas y Botones)
                 dbTrigger.setValue(System.currentTimeMillis());
 
-                Log.d("ARENA", "Duelo finalizado y estados reseteados.");
+                Log.d("ARENA_FINISH", "Duelo " + tipoJuego + " en Mesa #" + idMesa + " finalizado correctamente.");
             });
         });
     }
@@ -406,15 +563,31 @@ public class ProductoViewModel extends AndroidViewModel {
         this.integrantesAzulCacheados = new ArrayList<>(azul);
         this.integrantesRojoCacheados = new ArrayList<>(rojo);
         this.enModoDuelo.postValue(true);
+
+        // 🔥 INTEGRACIÓN MÍNIMA: Si no hay UUID, lo generamos aquí mismo
+        if (this.uuidDueloActual == null) {
+            // Generamos un ID único para que la bolsa no quede NULL
+            this.uuidDueloActual = UUID.randomUUID().toString();
+
+            // Opcional: Si quieres que sea ultra seguro ante cierres,
+            // búscalo en la DB antes de generar uno nuevo
+            executorService.execute(() -> {
+                String uuidExistente = db.dueloDao().obtenerUuidDueloActivo();
+                if (uuidExistente != null) {
+                    this.uuidDueloActual = uuidExistente;
+                }
+                // Refrescamos para que los observadores de la bolsa se despierten
+                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+            });
+        }
     }
 
 
-    public void prepararDueloPoolMultiequipo(Map<Integer, Integer> seleccion) {
-        // 1. Crear una COPIA del mapa inmediatamente para evitar el error de concurrencia
+    public void prepararDueloPoolMultiequipo(Map<Integer, Integer> seleccion, int idMesa) {
         final Map<Integer, Integer> copiaSeleccion = new HashMap<>(seleccion);
 
         this.enModoDuelo.postValue(true);
-        this.mapaColoresDuelo.postValue(copiaSeleccion); // Usamos la copia
+        this.mapaColoresDuelo.postValue(copiaSeleccion);
         this.uuidDueloActual = UUID.randomUUID().toString();
         this.tiempoInicioDuelo.postValue(System.currentTimeMillis());
 
@@ -422,17 +595,19 @@ public class ProductoViewModel extends AndroidViewModel {
             try {
                 db.dueloDao().borrarDueloFallido();
 
-                // 2. Recorremos la COPIA, que nadie más puede modificar
                 for (Map.Entry<Integer, Integer> entry : copiaSeleccion.entrySet()) {
                     int idCliente = entry.getKey();
                     int colorAsignado = entry.getValue();
 
+                    // 🔥 Pasamos el idMesa al constructor actualizado
                     DueloTemporal dt = new DueloTemporal(
                             uuidDueloActual,
                             colorAsignado,
                             idCliente,
-                            "ACTIVO"
+                            "ACTIVO",
+                            idMesa
                     );
+
                     db.dueloDao().insertarParticipante(dt);
                 }
 
@@ -443,75 +618,66 @@ public class ProductoViewModel extends AndroidViewModel {
         });
     }
 
-    public void setReglaCobroBD(int idMesa, String seleccion) {
-        this.reglaCobroActiva.postValue(seleccion);
-        executorService.execute(() -> {
-            // Esto busca en tu MesaDao el método que creamos anteriormente
-            db.mesaDao().actualizarReglaDuelo(idMesa, seleccion);
-            Log.d("ARENA", "Regla persistida en BD para mesa: " + idMesa);
-        });
-    }
-
     public void aplicarDanioMultiequipo(int colorEquipoGanador) {
-        List<Producto> productosBolsa = listaApuesta.getValue();
-        Map<Integer, Integer> participantesMapa = mapaColoresDuelo.getValue();
-        String regla = reglaCobroActiva.getValue() != null ? reglaCobroActiva.getValue() : "GANADOR_SALVA";
+        // 1. Capturamos los datos actuales de forma segura
+        final Map<Integer, Integer> participantesMapa = (mapaColoresDuelo.getValue() != null)
+                ? new HashMap<>(mapaColoresDuelo.getValue()) : null;
+        final String uuid = uuidDueloActual;
 
-        if (productosBolsa == null || productosBolsa.isEmpty() || participantesMapa == null || uuidDueloActual == null) {
-            return;
-        }
+        if (participantesMapa == null || uuid == null) return;
 
         executorService.execute(() -> {
-            // 1. Identificar quiénes pagan
-            List<Integer> idsAfectados = new ArrayList<>();
-            if ("GANADOR_SALVA".equals(regla)) {
+            // 2. Buscamos la munición lista (ENTREGADO e idCliente = 0)
+            List<DetallePedido> bolsa = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuid);
+            if (bolsa == null || bolsa.isEmpty()) return;
+
+            // 3. IDENTIFICAR AFECTADOS (Aquí estaba la falla)
+            List<Integer> afectados = new ArrayList<>();
+            String regla = db.dueloDao().obtenerReglaCobroDuelo(uuid); // Leemos directo de la BD por seguridad
+
+            if ("TODOS_PAGAN".equals(regla)) {
+                // SI TODOS PAGAN, METEMOS A TODOS LOS IDS DEL MAPA SIN EXCEPCIÓN
+                afectados.addAll(participantesMapa.keySet());
+            } else {
+                // REGLA NORMAL: El ganador se salva, los otros equipos pagan
                 for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
                     if (entry.getValue() != colorEquipoGanador) {
-                        idsAfectados.add(entry.getKey());
+                        afectados.add(entry.getKey());
                     }
                 }
-            } else if ("TODOS_PAGAN".equals(regla)) {
-                idsAfectados.addAll(participantesMapa.keySet());
-            } else if ("ULTIMO_PAGA".equals(regla)) {
-                // Buscamos al ID con menos puntos en el mapa de scores actual
-                int idPeor = obtenerIdConMenorPuntaje();
-                if (idPeor != -1) idsAfectados.add(idPeor);
             }
 
-            if (idsAfectados.isEmpty()) return;
+            if (afectados.isEmpty()) return;
 
-            // 2. Calcular y Registrar Daño
-            BigDecimal totalBolsa = BigDecimal.ZERO;
-            for (Producto p : productosBolsa) totalBolsa = totalBolsa.add(p.getPrecioProducto());
+            BigDecimal divisor = new BigDecimal(afectados.size());
+            String marcadorRelativo = obtenerMarcadorActualString();
 
-            // Cuota individual = Total / número de personas que pagan
-            BigDecimal cuotaPersona = totalBolsa.divide(new BigDecimal(idsAfectados.size()), 2, RoundingMode.HALF_UP);
+            // 4. TRANSACCIÓN DE REPARTO
+            for (DetallePedido dp : bolsa) {
+                BigDecimal precioReparto = dp.precioEnVenta.divide(divisor, 2, RoundingMode.HALF_UP);
 
-            for (Integer idCliente : idsAfectados) {
-                // Registramos el detalle para cada cliente afectado
-                for (Producto p : productosBolsa) {
-                    // El precio en venta es la parte proporcional de ese producto
-                    BigDecimal precioProporcional = p.getPrecioProducto().divide(new BigDecimal(idsAfectados.size()), 2, RoundingMode.HALF_UP);
-
-                    DetallePedido dp = new DetallePedido();
-                    dp.idCliente = idCliente;
-                    dp.idProducto = p.idProducto;
-                    dp.cantidad = 1;
-                    dp.precioEnVenta = precioProporcional;
-                    dp.esApuesta = true;
-                    dp.idDueloOrigen = uuidDueloActual;
-                    dp.marcadorAlMomento = obtenerMarcadorActualString(); // Función para generar el texto "1-0-2"
-                    dp.fechaLong = System.currentTimeMillis();
-
-                    db.detallePedidoDao().insertarDetalle(dp);
+                for (Integer idCli : afectados) {
+                    DetallePedido nuevo = new DetallePedido();
+                    nuevo.idCliente = idCli;
+                    nuevo.idProducto = dp.idProducto;
+                    nuevo.idMesa = dp.idMesa;
+                    nuevo.idDueloOrigen = uuid;
+                    nuevo.cantidad = 1;
+                    nuevo.precioEnVenta = precioReparto;
+                    nuevo.esApuesta = true;
+                    nuevo.estado = "REGISTRADO"; // <-- Estado final de cobro
+                    nuevo.marcadorAlMomento = marcadorRelativo;
+                    nuevo.fechaLong = System.currentTimeMillis();
+                    db.detallePedidoDao().insertarDetalle(nuevo);
                 }
+                // 5. BORRAMOS EL BALÍN (El registro de la bolsa)
+                db.detallePedidoDao().borrarDetallePorId(dp.idDetalle);
             }
 
-            // 3. Notificar cambios a la UI
+            // 6. ACTUALIZACIÓN FINAL
             mainThreadHandler.post(() -> {
-                listaApuesta.setValue(new ArrayList<>()); // Limpiar bolsa
-                actualizarPuntajeEquipoDinamico(colorEquipoGanador); // Subir marcador
-                dbTrigger.setValue(System.currentTimeMillis()); // Refrescar saldos en pantalla
+                actualizarPuntajeEquipoDinamico(colorEquipoGanador);
+                dbTrigger.setValue(System.currentTimeMillis()); // Esto refresca las burbujas
             });
         });
     }
@@ -600,11 +766,24 @@ public class ProductoViewModel extends AndroidViewModel {
     }
 
     public List<Integer> obtenerIdsParticipantesArena() {
+        List<Integer> ids = new ArrayList<>();
+
+        // 1. Agregar IDs de la Arena Individual (3 Bandas)
+        if (integrantesAzulCacheados != null) {
+            for (Cliente c : integrantesAzulCacheados) {
+                ids.add(c.idCliente);
+            }
+        }
+
+        // 2. Agregar IDs de la Arena Grupal (Mapa de Colores Pool)
         Map<Integer, Integer> mapa = mapaColoresDuelo.getValue();
         if (mapa != null) {
-            return new ArrayList<>(mapa.keySet());
+            for (Integer id : mapa.keySet()) {
+                if (!ids.contains(id)) ids.add(id);
+            }
         }
-        return new ArrayList<>();
+
+        return ids;
     }
 
     // En ProductoViewModel.java
@@ -638,6 +817,10 @@ public class ProductoViewModel extends AndroidViewModel {
                 mainThreadHandler.post(() -> {
                     this.mapaColoresDuelo.setValue(mapaRecuperado);
                     this.enModoDuelo.setValue(true);
+                    executorService.execute(() -> {
+                        String reglaDB = db.dueloDao().obtenerReglaCobroDuelo(uuidDueloActual);
+                        if (reglaDB != null) reglaCobroActiva.postValue(reglaDB);
+                    });
                     this.dbTrigger.setValue(System.currentTimeMillis()); // 🔥 Forzar refresco de saldos
                 });
             }
@@ -656,6 +839,626 @@ public class ProductoViewModel extends AndroidViewModel {
                 }
             });
             return saldo;
+        });
+    }
+
+    /**
+     * Observa en tiempo real cuántos pedidos faltan por entregar en una mesa.
+     * Se usa para el Badge (notificación) de la esquina superior izquierda.
+     */
+    public LiveData<Integer> observarConteoPendientesMesa(int idMesa) {
+        return db.detallePedidoDao().observarConteoPendientesMesa(idMesa);
+    }
+
+
+    /**
+     * Obtiene solo los productos que ya han sido despachados (ENTREGADO).
+     * Se usa para calcular el valor real de la "Bolsa" o apuesta acumulada en la UI.
+     */
+    public LiveData<List<Producto>> getListaApuestaEntregada() {
+        return Transformations.switchMap(dbTrigger, trigger -> {
+            MutableLiveData<List<Producto>> entregadosLiveData = new MutableLiveData<>();
+            executorService.execute(() -> {
+                if (uuidDueloActual != null) {
+                    // Consulta al DAO que cruza DetallePedido con Producto filtrando por 'ENTREGADO'
+                    List<Producto> lista = db.productoDao().obtenerProductosEntregadosDuelo(uuidDueloActual);
+                    entregadosLiveData.postValue(lista != null ? lista : new ArrayList<>());
+                }
+            });
+            return entregadosLiveData;
+        });
+    }
+
+    public void marcarComoEntregado(int idDetalle, int idUsuarioAdmin) {
+        executorService.execute(() -> {
+            // 1. Cambiar estado en DB
+            db.detallePedidoDao().despacharPedido(idDetalle, "ENTREGADO", idUsuarioAdmin);
+
+            // 2. Disparar el gatillo para que las 3 funciones de arriba se refresquen
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    public void despacharTodoLaMesa(int idMesa, int idAdmin) {
+        executorService.execute(() -> {
+            // 1. Actualizamos todos los pendientes a entregado
+            db.detallePedidoDao().marcarTodoComoEntregadoMesa(idMesa, idAdmin);
+
+            // 2. Refrescamos la UI (Bolsa, Badge y Saldos)
+            mainThreadHandler.post(() -> {
+                dbTrigger.setValue(System.currentTimeMillis());
+                Log.d("LOGISTICA", "Mesa " + idMesa + " despachada totalmente.");
+            });
+        });
+    }
+
+    public LiveData<List<DetalleHistorialDuelo>> obtenerSoloPendientesMesa(int idMesa) {
+        return db.detallePedidoDao().obtenerSoloPendientesMesa(idMesa);
+    }
+
+    public void insertarMunicionDueloPendiente(int idMesa, Producto producto, int cantidad) {
+        executorService.execute(() -> {
+            // 1. Intentamos obtener el UUID de la variable en memoria
+            String uuid = this.uuidDueloActual;
+
+            // 2. Si es null (por reinicio), buscamos en la tabla de 3 BANDAS primero
+            if (uuid == null) {
+                // Buscamos en la tabla que mostraste en tu imagen (duelos_temporales_ind)
+                // Necesitas agregar este Query en tu DueloTemporalIndDao si no lo tienes
+                uuid = db.dueloTemporalIndDao().obtenerIdDueloPorMesaSincrono(idMesa);
+            }
+
+            // 3. Si sigue siendo null, buscamos en la tabla de POOL
+            if (uuid == null) {
+                uuid = db.dueloDao().obtenerUuidDueloActivo();
+            }
+
+            if (uuid == null) {
+                mainThreadHandler.post(() -> Log.e("ERROR_VINCULO", "No se encontró un duelo activo para vincular el pedido"));
+                return;
+            }
+
+            for (int i = 0; i < cantidad; i++) {
+                DetallePedido dp = new DetallePedido();
+                dp.idProducto = producto.idProducto;
+                dp.idMesa = idMesa;
+                dp.idDueloOrigen = uuid; // 🔥 AHORA SÍ TIENE EL ID DE TU IMAGEN
+                dp.precioEnVenta = producto.getPrecioProducto();
+                dp.cantidad = 1;
+                dp.idCliente = 0; // Bolsa
+                dp.estado = "PENDIENTE";
+                dp.esApuesta = true;
+                dp.fechaLong = System.currentTimeMillis();
+                db.detallePedidoDao().insertarDetalle(dp);
+            }
+
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    public void insertarConsumoDirectoEntregado(int idCliente, Producto producto, int cantidad) {
+        executorService.execute(() -> {
+            DetallePedido dp = new DetallePedido();
+            dp.idCliente = idCliente;
+            dp.idProducto = producto.idProducto;
+            dp.cantidad = cantidad;
+            dp.precioEnVenta = producto.getPrecioProducto();
+            dp.estado = "ENTREGADO"; // ✅ Se entrega de una vez, no pasa por Badge
+            dp.esApuesta = false;
+            dp.fechaLong = System.currentTimeMillis();
+
+            db.detallePedidoDao().insertarDetalle(dp);
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    /**
+     * Cambia el estado de un producto de PENDIENTE a CANCELADO.
+     * Esto hace que desaparezca del resumen del catálogo y del Badge de la arena.
+     */
+    public void eliminarDetallePendiente(int idDetalle) {
+        executorService.execute(() -> {
+            db.detallePedidoDao().cancelarDetallePorId(idDetalle);
+            // Notificamos a la UI para que el resumen del catálogo y el Badge se refresquen
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    /**
+     * Cancela toda la munición que aún no ha sido entregada para una mesa.
+     */
+    public void cancelarMunicionPendienteMesa(int idMesa) {
+        executorService.execute(() -> {
+            db.detallePedidoDao().cancelarTodosLosPendientesMesa(idMesa);
+            // Notificamos a la UI para limpiar el resumen y poner el Badge en 0
+            mainThreadHandler.post(() -> {
+                dbTrigger.setValue(System.currentTimeMillis());
+                Log.d("LOGISTICA", "Bolsa de mesa " + idMesa + " cancelada.");
+            });
+        });
+    }
+
+    // --- ProductoViewModel.java ---
+
+    private List<Integer> identificarPerdedores(Map<Integer, Integer> participantesMapa, int colorEquipoGanador) {
+        List<Integer> idsAfectados = new ArrayList<>();
+        String regla = getReglaCobroDuelo().getValue();
+        if (regla == null) regla = "GANADOR_SALVA";
+
+        switch (regla) {
+            case "TODOS_PAGAN":
+                // 🔥 CORRECCIÓN: Aquí no importa quién ganó.
+                // Agregamos ABSOLUTAMENTE TODOS los IDs del mapa.
+                idsAfectados.addAll(participantesMapa.keySet());
+                break;
+
+            case "GANADOR_SALVA":
+                // Solo los que NO son del color ganador
+                for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
+                    if (entry.getValue() != colorEquipoGanador) {
+                        idsAfectados.add(entry.getKey());
+                    }
+                }
+                break;
+
+            case "ULTIMO_PAGA":
+                // Por ahora lo dejamos igual o como fallback
+                int idPeor = obtenerIdConMenorPuntaje();
+                if (idPeor != -1) idsAfectados.add(idPeor);
+                else idsAfectados.addAll(participantesMapa.keySet());
+                break;
+        }
+        return idsAfectados;
+    }
+
+    // --- GESTIÓN DE SEGURIDAD Y CONFIGURACIÓN DEL DUELO ---
+
+    /**
+     * Observa si el duelo actual requiere PIN.
+     * Se dispara automáticamente cuando cambia en la DB o mediante dbTrigger.
+     */
+    public LiveData<Boolean> getRequierePinDuelo() {
+        return Transformations.switchMap(dbTrigger, trigger -> {
+            MutableLiveData<Boolean> resultado = new MutableLiveData<>(true); // Default
+            executorService.execute(() -> {
+                if (uuidDueloActual != null) {
+                    Boolean requiere = db.dueloDao().obtenerRequierePinDuelo(uuidDueloActual);
+                    resultado.postValue(requiere != null ? requiere : true);
+                }
+            });
+            return resultado;
+        });
+    }
+
+    /**
+     * Actualiza la preferencia de seguridad (PIN) en la base de datos para el duelo activo.
+     */
+    public void actualizarSeguridadPinDuelo(boolean requiere) {
+        executorService.execute(() -> {
+            if (uuidDueloActual != null) {
+                db.dueloDao().actualizarSeguridadPinDuelo(uuidDueloActual, requiere);
+                // Notificamos a la UI para que cualquier observador se refresque
+                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+            }
+        });
+    }
+
+    public LiveData<String> getReglaCobroDuelo() {
+        return Transformations.switchMap(dbTrigger, trigger -> {
+            MutableLiveData<String> regla = new MutableLiveData<>("GANADOR_SALVA");
+            executorService.execute(() -> {
+                if (uuidDueloActual != null) {
+                    String r = db.dueloDao().obtenerReglaCobroDuelo(uuidDueloActual);
+                    regla.postValue(r != null ? r : "GANADOR_SALVA");
+                }
+            });
+            return regla;
+        });
+    }
+
+    public void actualizarReglaDuelo(String nuevaRegla) {
+        executorService.execute(() -> {
+            if (uuidDueloActual != null) {
+                db.dueloDao().actualizarReglaCobroDuelo(uuidDueloActual, nuevaRegla);
+                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+            }
+        });
+    }
+
+    public void aplicarDanioUltimoPaga(int colorGanador, int colorPerdedor) {
+        final String uuid = uuidDueloActual;
+        final Map<Integer, Integer> participantesMapa = (mapaColoresDuelo.getValue() != null)
+                ? new HashMap<>(mapaColoresDuelo.getValue()) : null;
+
+        if (participantesMapa == null || uuid == null) return;
+
+        executorService.execute(() -> {
+            // 1. Obtener munición real de la bolsa (idCliente = 0 y estado ENTREGADO)
+            List<DetallePedido> bolsa = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuid);
+
+            // Si no hay productos en la bolsa, no hay nada que cobrar
+            if (bolsa == null || bolsa.isEmpty()) return;
+
+            // 2. Identificar a los clientes específicos que pertenecen al color del equipo perdedor
+            List<Integer> idsAfectados = new ArrayList<>();
+            for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
+                if (entry.getValue() == colorPerdedor) {
+                    idsAfectados.add(entry.getKey());
+                }
+            }
+
+            // Si por alguna razón no hay clientes en ese equipo, abortamos
+            if (idsAfectados.isEmpty()) return;
+
+            // 3. Distribución de la deuda
+            BigDecimal divisor = new BigDecimal(idsAfectados.size());
+            String marcadorRelativo = obtenerMarcadorActualString();
+
+            for (DetallePedido dp : bolsa) {
+                // Dividimos el precio del producto entre los integrantes del equipo que perdió
+                BigDecimal precioIndividual = dp.precioEnVenta.divide(divisor, 2, RoundingMode.HALF_UP);
+
+                for (Integer idClientePerdedor : idsAfectados) {
+                    // Creamos el nuevo registro de deuda vinculado al cliente
+                    DetallePedido nuevoCobro = crearDetalleDeuda(idClientePerdedor, dp, precioIndividual, uuid, marcadorRelativo);
+                    db.detallePedidoDao().insertarDetalle(nuevoCobro);
+                }
+
+                // 4. IMPORTANTE: Borramos el registro original de la bolsa para que no se duplique
+                db.detallePedidoDao().borrarDetallePorId(dp.idDetalle);
+            }
+
+            // 5. Actualización de la Interfaz (Punto y Refresco)
+            mainThreadHandler.post(() -> {
+                // El punto se le suma al equipo que el Fragment marcó como Ganador (colorGanador)
+                actualizarPuntajeEquipoDinamico(colorGanador);
+
+                // Disparamos el gatillo para refrescar los saldos (burbujas) y vaciar el Badge de la bolsa
+                dbTrigger.setValue(System.currentTimeMillis());
+            });
+        });
+    }
+
+    /**
+     * Función auxiliar para estandarizar la creación de deudas en la DB.
+     */
+    private DetallePedido crearDetalleDeuda(int idCli, DetallePedido plantilla, BigDecimal precio, String uuid, String marcador) {
+        DetallePedido nuevo = new DetallePedido();
+        nuevo.idCliente = idCli;
+        nuevo.idProducto = plantilla.idProducto;
+        nuevo.idMesa = plantilla.idMesa;
+        nuevo.idDueloOrigen = uuid;
+        nuevo.cantidad = 1;
+        nuevo.precioEnVenta = precio;
+        nuevo.esApuesta = true;
+        nuevo.estado = "REGISTRADO"; // Pasa directo a la cuenta del cliente
+        nuevo.marcadorAlMomento = marcador;
+        nuevo.fechaLong = System.currentTimeMillis();
+        return nuevo;
+    }
+
+    // --- FUNCIONES PARA DUELO INDIVIDUAL (PERSISTENCIA DE PERFIL) ---
+
+    /**
+     * Actualiza o inserta el perfil de configuración para un duelo individual.
+     * Guarda la meta de puntos y el nombre del nivel para la mesa actual.
+     */
+    public void actualizarPerfilDueloInd(int idMesa, int puntos, String nivel) {
+        executorService.execute(() -> {
+            try {
+                // Creamos el perfil con la regla por defecto "PERDEDORES"
+                PerfilDueloInd nuevoPerfil = new PerfilDueloInd(idMesa, puntos, nivel, "PERDEDORES");
+
+                // Usamos el DAO directamente desde la instancia 'db'
+                db.perfilDueloIndDao().insertarOActualizar(nuevoPerfil);
+
+                // Notificamos a la UI para que los observadores de meta se actualicen
+                mainThreadHandler.post(() -> {
+                    dbTrigger.setValue(System.currentTimeMillis());
+                    Log.d("PERFIL_IND", "Meta guardada: Mesa " + idMesa + " -> " + puntos + " pts (" + nivel + ")");
+                });
+            } catch (Exception e) {
+                Log.e("PERFIL_IND_ERR", "Error al guardar perfil: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Obtiene el perfil de duelo individual configurado para una mesa específica.
+     * Devuelve un LiveData para que la UI reaccione a cambios de nivel en tiempo real.
+     */
+    public LiveData<PerfilDueloInd> getPerfilDueloInd(int idMesa) {
+        // Consultamos el perfil vinculado a la mesa actual
+        return db.perfilDueloIndDao().obtenerPerfilPorMesa(idMesa);
+    }
+
+    /**
+     * Agrega un nuevo jugador a un duelo individual ya iniciado (Reclutamiento en caliente).
+     */
+    public void agregarJugadorADueloIndActivo(int idMesa, Cliente nuevoCliente) {
+        executorService.execute(() -> {
+            // Usamos el idMesa para asegurar que se guarda en el duelo correcto
+            DueloTemporalInd dueloInd = new DueloTemporalInd(
+                    uuidDueloActual, idMesa, nuevoCliente.idCliente, 20, "PERDEDORES");
+
+            db.dueloTemporalIndDao().insertarOActualizar(dueloInd);
+
+            mainThreadHandler.post(() -> {
+                if (!integrantesAzulCacheados.contains(nuevoCliente)) {
+                    integrantesAzulCacheados.add(nuevoCliente);
+                    dbTrigger.setValue(System.currentTimeMillis()); // Esto refresca la Arena
+                }
+            });
+        });
+    }
+
+    public long obtenerTiempoTranscurridoInd(int idMesa, int idCliente) {
+        // Para no saturar la DB cada segundo, lo ideal es que el Fragment
+        // maneje los timestamps de inicio en un Map local que se llena al cargar
+        return 0; // Se manejará con la lógica optimizada abajo
+    }
+
+
+    public long obtenerTiempoTranscurridoIndividual(int idMesa, int idCliente) {
+        // 1. Buscamos en la base de datos el registro específico de este cliente en esta mesa
+        // Nota: Para optimizar, podrías cargar esto en un Map al iniciar el Fragment
+        DueloTemporalInd estado = db.dueloTemporalIndDao().obtenerEstadoCliente(idMesa, idCliente);
+
+        if (estado == null || estado.timestampInicio == 0) return 0;
+
+        // 2. Si el jugador NO está pausado, calculamos: Ahora - Inicio
+        // (Si implementas pausas, tendrías que restar el tiempo que estuvo pausado)
+        return System.currentTimeMillis() - estado.timestampInicio;
+    }
+
+    public long obtenerTimestampInicioPorCliente(int idMesa, int idCliente) {
+        // Como Room no permite consultas en el hilo principal,
+        // este método debe ser llamado desde un hilo de fondo.
+        return db.dueloTemporalIndDao().obtenerTimestampInicioPorCliente(idMesa, idCliente);
+    }
+
+    public void insertarMunicionBolsaIndPendiente(int idMesa, Producto producto) {
+        executorService.execute(() -> {
+            if (this.uuidDueloActual == null) {
+                this.uuidDueloActual = db.dueloDao().obtenerUuidDueloActivo();
+            }
+            DetallePedido dp = new DetallePedido();
+            dp.idProducto = producto.idProducto;
+            dp.idMesa = idMesa;
+            dp.idCliente = 0; // 0 = Identificador de "La Bolsa"
+            dp.idDueloOrigen = uuidDueloActual;
+            dp.precioEnVenta = producto.getPrecioProducto();
+            dp.cantidad = 1;
+            dp.estado = "PENDIENTE"; // Activará el Badge de notificación
+            dp.esApuesta = true;
+            dp.fechaLong = System.currentTimeMillis();
+
+            db.detallePedidoDao().insertarDetalle(dp);
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    // En ProductoViewModel.java
+
+    public LiveData<List<Producto>> getBolsaIndEntregada() {
+        return Transformations.switchMap(dbTrigger, trigger -> {
+            MutableLiveData<List<Producto>> liveData = new MutableLiveData<>();
+            executorService.execute(() -> {
+                // Re-validamos el UUID en cada disparo del trigger
+                String uuid = (uuidDueloActual != null) ? uuidDueloActual : db.dueloDao().obtenerUuidDueloActivo();
+
+                if (uuid != null) {
+                    List<Producto> lista = db.productoDao().obtenerProductosBolsaEntregados(uuid);
+                    liveData.postValue(lista);
+                } else {
+                    // Si aún no hay duelo, devolvemos lista vacía para no romper la UI
+                    liveData.postValue(new ArrayList<>());
+                }
+            });
+            return liveData;
+        });
+    }
+
+    public void ejecutarRepartoBolsaInd(int idClienteAnotador, List<Cliente> todosLosParticipantes) {
+        executorService.execute(() -> {
+            // 1. Buscamos SOLO lo que está ENTREGADO en la bolsa (idCliente = 0)
+            List<DetallePedido> municionLista = db.detallePedidoDao().obtenerMunicionBolsaParaReparto(uuidDueloActual);
+
+            if (municionLista == null || municionLista.isEmpty()) return;
+
+            // 2. Identificar víctimas según la regla (PERDEDORES, TODOS, etc.)
+            List<Integer> idsVictimas = identificarIdsVictimasInd(idClienteAnotador, todosLosParticipantes);
+
+            if (idsVictimas.isEmpty()) return;
+
+            BigDecimal divisor = new BigDecimal(idsVictimas.size());
+
+            for (DetallePedido item : municionLista) {
+                BigDecimal precioRepartido = item.precioEnVenta.divide(divisor, 2, RoundingMode.HALF_UP);
+
+                for (Integer idV : idsVictimas) {
+                    DetallePedido nuevo = new DetallePedido();
+                    nuevo.idCliente = idV;
+                    nuevo.idProducto = item.idProducto;
+                    nuevo.idMesa = item.idMesa;
+                    nuevo.idDueloOrigen = uuidDueloActual;
+                    nuevo.cantidad = 1;
+                    nuevo.precioEnVenta = precioRepartido;
+                    nuevo.esApuesta = true;
+                    nuevo.estado = "REGISTRADO"; // Pasa directo a la cuenta del cliente
+                    nuevo.fechaLong = System.currentTimeMillis();
+                    nuevo.marcadorAlMomento = "Impacto de: " + obtenerAliasCliente(idClienteAnotador);
+                    db.detallePedidoDao().insertarDetalle(nuevo);
+                }
+                // 3. Eliminamos el rastro de la bolsa (El "balín" ya impactó)
+                db.detallePedidoDao().borrarDetallePorId(item.idDetalle);
+            }
+
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    private List<Integer> identificarIdsVictimasInd(int idClienteAnotador, List<Cliente> todosLosParticipantes) {
+        List<Integer> victimas = new ArrayList<>();
+        String regla = reglaPagoInd.getValue(); // "PERDEDORES", "TODOS", "ULTIMO"
+
+        if (regla == null) regla = "PERDEDORES"; // Fallback de seguridad
+
+        switch (regla) {
+            case "PERDEDORES":
+                // Todos menos el que hizo el punto
+                for (Cliente c : todosLosParticipantes) {
+                    if (c.idCliente != idClienteAnotador) {
+                        victimas.add(c.idCliente);
+                    }
+                }
+                break;
+
+            case "TODOS":
+                // Incluye al que hizo el punto (Reparto equitativo total)
+                for (Cliente c : todosLosParticipantes) {
+                    victimas.add(c.idCliente);
+                }
+                break;
+
+            case "ULTIMO":
+                // Buscamos quién tiene menos carambolas en el marcador local
+                int idPeor = -1;
+                int minPuntos = Integer.MAX_VALUE;
+                Map<Integer, Integer> scores = scoresIndividualesInd.getValue();
+
+                if (scores != null && !scores.isEmpty()) {
+                    for (Cliente c : todosLosParticipantes) {
+                        int pts = scores.containsKey(c.idCliente) ? scores.get(c.idCliente) : 0;
+                        if (pts < minPuntos) {
+                            minPuntos = pts;
+                            idPeor = c.idCliente;
+                        }
+                    }
+                }
+
+                // Si encontramos al último, solo él paga.
+                // Si hay empate o no hay scores, pagan todos los perdedores por defecto.
+                if (idPeor != -1) {
+                    victimas.add(idPeor);
+                } else {
+                    for (Cliente c : todosLosParticipantes) {
+                        if (c.idCliente != idClienteAnotador) victimas.add(c.idCliente);
+                    }
+                }
+                break;
+        }
+        return victimas;
+    }
+
+    public void confirmarEntregaBolsaInd(int idDetalle, int usuario) {
+        executorService.execute(() -> {
+            // Usamos el método despacharPedido que ya tienes en tu DAO
+            db.detallePedidoDao().despacharPedido(idDetalle, "ENTREGADO", usuario);
+
+            // Notificamos a la UI para que el Badge baje y la Bolsa suba
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    public LiveData<List<DetalleHistorialDuelo>> obtenerDetalleDeudaRegistrada(int idMesa) {
+        return db.detallePedidoDao().obtenerDeudaPorMesa(idMesa);
+    }
+
+    public LiveData<List<DueloTemporalInd>> obtenerScoresDesdePersistencia(int idMesa) {
+        // Consulta al DAO para obtener los registros de la mesa activa
+        return db.dueloTemporalIndDao().obtenerScoresDesdePersistencia(idMesa);
+    }
+
+    // También es útil agregar este método para actualizar los marcadores manualmente desde el Fragment
+    public void setScoresIndividualesManual(Map<Integer, Integer> nuevosScores) {
+        this.scoresIndividualesInd.setValue(nuevosScores);
+    }
+
+    /**
+     * Cruza la tabla de Hitos (DetalleDueloTemporalInd) con los productos repartidos
+     * para generar la lista agrupada con subtotales que el Log necesita.
+     */
+    public LiveData<List<LogAgrupadoDTO>> obtenerLogAgrupado(int idMesa) {
+        return Transformations.switchMap(dbTrigger, trigger -> {
+            MutableLiveData<List<LogAgrupadoDTO>> resultado = new MutableLiveData<>();
+
+            executorService.execute(() -> {
+                // Si no hay UUID actual, no hay partida activa, devolvemos lista vacía
+                if (uuidDueloActual == null) {
+                    resultado.postValue(new ArrayList<>());
+                    return;
+                }
+
+                // 1. Obtener hitos de la base de datos filtrados por el UUID activo
+                List<DetalleDueloTemporalInd> hitos = db.detalleDueloTemporalIndDao()
+                        .obtenerHistorialHitosSincrono(uuidDueloActual);
+
+                // 2. Obtener los productos ya repartidos (Estado REGISTRADO)
+                List<DetalleHistorialDuelo> todosLosProductos = db.detallePedidoDao()
+                        .obtenerDeudaPorMesaIndSincrona(idMesa);
+
+                List<LogAgrupadoDTO> listaAgrupada = new ArrayList<>();
+
+                if (hitos != null) {
+                    for (DetalleDueloTemporalInd hito : hitos) {
+                        List<DetalleHistorialDuelo> productosDeEsteHito = new ArrayList<>();
+
+                        // Usamos la clave única que generamos al repartir la bolsa
+                        String claveBusqueda = "PT_" + hito.scoreGlobalAnotador + "_" + hito.aliasAnotador;
+
+                        if (todosLosProductos != null) {
+                            for (DetalleHistorialDuelo p : todosLosProductos) {
+                                if (claveBusqueda.equals(p.marcadorAlMomento)) {
+                                    productosDeEsteHito.add(p);
+                                }
+                            }
+                        }
+                        listaAgrupada.add(new LogAgrupadoDTO(hito, productosDeEsteHito));
+                    }
+                }
+                resultado.postValue(listaAgrupada);
+            });
+            return resultado;
+        });
+    }
+
+    public LiveData<List<DetalleHistorialDuelo>> obtenerDeudaPorMesaInd(int idMesa) {
+        return db.detallePedidoDao().obtenerDeudaPorMesaInd(idMesa);
+    }
+
+    // En ProductoViewModel.java
+
+    public void finalizarDueloIndividualMesa(int idMesa) {
+        executorService.execute(() -> {
+            // 1. Persistencia: Cambiamos estados en la DB a FINALIZADO
+            db.dueloTemporalIndDao().finalizarDueloMesa(idMesa);
+
+            // 2. Limpieza de UI
+            mainThreadHandler.post(() -> {
+                enModoDuelo.setValue(false);
+                uuidDueloActual = null;
+                integrantesAzulCacheados.clear(); // Limpiamos la lista de la Arena
+                dbTrigger.setValue(System.currentTimeMillis());
+            });
+        });
+    }
+
+    public void retirarJugadorEspecificoInd(int idMesa, int idCliente) {
+        executorService.execute(() -> {
+            // Marcamos como finalizado en DB para que persista el registro
+            db.dueloTemporalIndDao().finalizarJugadorIndividual(idMesa, idCliente);
+
+            mainThreadHandler.post(() -> {
+                // Buscamos y removemos de la lista en memoria (Caché)
+                for (int i = 0; i < integrantesAzulCacheados.size(); i++) {
+                    if (integrantesAzulCacheados.get(i).idCliente == idCliente) {
+                        integrantesAzulCacheados.remove(i);
+                        break;
+                    }
+                }
+                dbTrigger.setValue(System.currentTimeMillis()); // Refresca la Arena
+            });
         });
     }
 

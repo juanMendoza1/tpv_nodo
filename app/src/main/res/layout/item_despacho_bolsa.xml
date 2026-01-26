@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="6dp"
+    app:cardBackgroundColor="#1AFFFFFF"
+    app:cardCornerRadius="16dp"
+    app:strokeColor="#33FFFFFF"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_shopping_basket"
+            android:padding="8dp"
+            app:tint="#80FFFFFF"
+            android:background="@drawable/bg_avatar_circle"
+            android:backgroundTint="#1AFFFFFF"/>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="16dp">
+
+            <TextView
+                android:id="@+id/tvNombreProdDespacho"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="CERVEZA POKER"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="PENDIENTE DE ENTREGA"
+                android:textColor="#FF1744"
+                android:textSize="10sp"
+                android:letterSpacing="0.1" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConfirmarItem"
+            style="@style/Widget.MaterialComponents.Button.Icon"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            app:icon="@drawable/ic_check_circle"
+            app:iconSize="28dp"
+            app:iconTint="#00E5FF"
+            app:backgroundTint="#1A00E5FF"
+            app:cornerRadius="24dp"
+            app:strokeColor="#00E5FF"
+            app:strokeWidth="1dp" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

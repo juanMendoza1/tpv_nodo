@@ -5,4 +5,8 @@
         <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
     </style>
 
+    <style name="MaterialAlertDialog_Garena_Transparente" parent="Theme.MaterialComponents.DayNight.Dialog.Alert">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:background">#CC000000</item> <item name="colorSurface">#00000000</item> </style>
+
 </resources>

@@ -2,6 +2,7 @@
 <com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/cardJugador"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -16,17 +17,16 @@
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:gravity="center_horizontal"
-        android:padding="10dp">
+        android:padding="8dp">
 
         <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="5dp">
+            android:layout_height="wrap_content">
 
             <FrameLayout
                 android:id="@+id/frameAvatar"
-                android:layout_width="45dp"
-                android:layout_height="45dp"
+                android:layout_width="35dp"
+                android:layout_height="35dp"
                 android:layout_alignParentStart="true">
                 <View
                     android:id="@+id/bgIconoInd"
@@ -38,7 +38,7 @@
                     android:id="@+id/ivAvatarInd"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:padding="10dp"
+                    android:padding="8dp"
                     android:src="@drawable/ic_person"
                     app:tint="#FFFFFF" />
             </FrameLayout>
@@ -48,7 +48,9 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:layout_toEndOf="@id/frameAvatar"
+                android:layout_toStartOf="@+id/btnQuitarJugadorInd"
                 android:layout_marginStart="8dp"
+                android:layout_marginEnd="4dp"
                 android:layout_centerVertical="true">
 
                 <TextView
@@ -57,63 +59,176 @@
                     android:layout_height="wrap_content"
                     android:text="JUGADOR"
                     android:textColor="#FFFFFF"
-                    android:textSize="11sp"
+                    android:textSize="10sp"
                     android:textStyle="bold"
                     android:textAllCaps="true" />
 
-                <TextView
-                    android:id="@+id/tvTiempoInd"
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="00:00:00"
-                    android:textColor="#FFFFFF"
-                    android:textSize="10sp"
-                    android:fontFamily="monospace" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tvTiempoInd"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="00:04:07"
+                        android:textColor="#FFFFFF"
+                        android:textSize="9sp"
+                        android:fontFamily="monospace" />
+
+                    <ImageButton
+                        android:id="@+id/btnPausaReanudarInd"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="4dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_pause_circle"
+                        android:scaleType="fitCenter"
+                        app:tint="#FFD600" />
+                </LinearLayout>
             </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/btnQuitarJugadorInd"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close"
+                android:padding="6dp"
+                android:scaleType="fitCenter"
+                android:alpha="0.4"
+                app:tint="#FFFFFF" />
+
         </RelativeLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:orientation="horizontal"
             android:gravity="center"
-            android:orientation="vertical">
+            android:paddingHorizontal="4dp">
 
-            <TextView
-                android:id="@+id/tvScoreInd"
-                android:layout_width="wrap_content"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="0"
-                android:textColor="#FFFFFF"
-                android:textSize="95sp"
-                android:textStyle="bold"
-                android:includeFontPadding="false"
-                android:fontFamily="monospace" />
+                android:layout_weight="1.2"
+                android:orientation="vertical"
+                android:gravity="center">
 
-            <TextView
-                android:layout_width="wrap_content"
+                <TextView
+                    android:id="@+id/tvScoreInd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0"
+                    android:textColor="#FFFFFF"
+                    android:textSize="85sp"
+                    android:textStyle="bold"
+                    android:includeFontPadding="false"
+                    android:fontFamily="monospace" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PUNTOS TOTALES"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="7sp"
+                    android:letterSpacing="0.2"
+                    android:layout_marginTop="-10dp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="PUNTOS"
-                android:textColor="#B3FFFFFF"
-                android:textSize="9sp"
-                android:letterSpacing="0.2"
-                android:layout_marginTop="-10dp" />
+                android:layout_weight="0.8"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CARAMBOLAS"
+                    android:textColor="#80FFFFFF"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:letterSpacing="0.1"
+                    android:layout_marginBottom="4dp" />
+
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardMiniMarcador"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:cardBackgroundColor="#66000000"
+                    app:cardCornerRadius="12dp"
+                    app:strokeWidth="1.5dp"
+                    app:strokeColor="#4DFFFFFF">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:paddingVertical="8dp"
+                        android:gravity="center"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:id="@+id/tvMiniCounterInd"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="0"
+                            android:textColor="#FFD600"
+                            android:textSize="24sp"
+                            android:textStyle="bold" />
+
+                        <View
+                            android:layout_width="20dp"
+                            android:layout_height="1.5dp"
+                            android:background="#33FFFFFF"
+                            android:layout_marginVertical="2dp"/>
+
+                        <TextView
+                            android:id="@+id/tvMetaMiniInd"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="20"
+                            android:textColor="#80FFFFFF"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvDeudaIndividual"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DEUDA: $0,00"
+            android:textColor="#FF1744"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp"
+            android:shadowColor="#FF1744"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="10" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
             android:orientation="horizontal"
-            android:layout_marginBottom="10dp">
+            android:layout_marginBottom="6dp">
 
             <ImageButton
                 android:id="@+id/btnRestarPunto"
                 android:layout_width="50dp"
                 android:layout_height="50dp"
                 android:src="@drawable/ic_remove"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                app:tint="#B3FFFFFF"
+                android:background="@drawable/bg_circle_neon_btn"
+                app:tint="#00E5FF"
                 android:scaleType="centerInside" />
 
             <View
@@ -122,23 +237,24 @@
 
             <ImageButton
                 android:id="@+id/btnSumarPunto"
-                android:layout_width="70dp"
-                android:layout_height="70dp"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
                 android:src="@drawable/ic_add"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                app:tint="#FFFFFF"
-                android:scaleType="fitCenter"
-                android:padding="10dp" />
+                android:background="@drawable/bg_circle_neon_btn"
+                app:tint="#FF1744"
+                android:scaleType="centerInside" />
         </LinearLayout>
 
         <TextView
-            android:id="@+id/tvMeta"
+            android:id="@+id/tvMetaInd"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="META: 15"
-            android:textColor="#B3FFFFFF"
-            android:textSize="10sp"
-            android:textStyle="bold" />
+            android:text="MODO: 20 PTS"
+            android:textColor="#66FFFFFF"
+            android:textSize="8sp"
+            android:textAllCaps="true"
+            android:textStyle="bold"
+            android:letterSpacing="0.05" />
 
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

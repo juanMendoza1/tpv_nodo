@@ -180,6 +180,130 @@
             app:layout_constraintTop_toBottomOf="@id/cardDueloEnEspera"
             tools:listitem="@layout/item_cliente" />
 
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardResumenPago"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="20dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:layout_marginBottom="-12dp"
+            tools:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="#FFFFFF"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp">
+
+                    <ImageView
+                        android:id="@+id/btnMinimizarPago"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@drawable/ic_expand_less"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        app:tint="#1B5E20"
+                        android:layout_centerVertical="true"/>
+
+                    <TextView
+                        android:id="@+id/tvNombreClientePago"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_toEndOf="@id/btnMinimizarPago"
+                        android:layout_toStartOf="@id/btnCerrarResumen"
+                        android:text="DETALLE DE CONSUMO"
+                        android:textStyle="bold"
+                        android:textSize="13sp"
+                        android:textColor="#2E7D32"
+                        android:layout_centerVertical="true"
+                        android:layout_marginStart="8dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"/>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCerrarResumen"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:text="CERRAR"
+                        android:textColor="#D32F2F"
+                        android:textSize="11sp" />
+                </RelativeLayout>
+
+                <LinearLayout
+                    android:id="@+id/layoutDetallePagoColapsable"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:visibility="gone"
+                    android:orientation="vertical"
+                    tools:visibility="visible">
+
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/rvItemsCuenta"
+                        android:layout_width="match_parent"
+                        android:layout_height="180dp"
+                        android:paddingVertical="4dp"
+                        tools:listitem="@layout/item_detalle_ticket" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#E0E0E0"
+                        android:layout_marginVertical="12dp"/>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingBottom="12dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="TOTAL PENDIENTE"
+                            android:textSize="10sp"
+                            android:textColor="#757575"
+                            android:letterSpacing="0.05"/>
+                        <TextView
+                            android:id="@+id/tvMontoTotalResumen"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="$ 0.00"
+                            android:textColor="#1B5E20"
+                            android:textSize="24sp"
+                            android:textStyle="bold"/>
+                    </LinearLayout>
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnEjecutarPagoVisual"
+                        android:layout_width="wrap_content"
+                        android:layout_height="56dp"
+                        android:text="PAGAR CUENTA"
+                        app:backgroundTint="#FFD600"
+                        android:textColor="#000000"
+                        android:textStyle="bold"
+                        app:cornerRadius="16dp"
+                        app:elevation="4dp"
+                        app:icon="@drawable/ic_payments"/>
+                </LinearLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <LinearLayout

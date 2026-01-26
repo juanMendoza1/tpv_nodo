@@ -1,5 +1,6 @@
 package com.nodo.tpv.data.dao;
 
+import androidx.lifecycle.LiveData;
 import androidx.room.Dao;
 import androidx.room.Insert;
 import androidx.room.OnConflictStrategy;
@@ -37,5 +38,13 @@ public interface MesaDao {
 
     @Query("UPDATE mesa SET reglaDuelo = :regla WHERE idMesa = :idMesa")
     void actualizarReglaDuelo(int idMesa, String regla);
+
+    // 🔥 NUEVA CONSULTA: Para observar la regla en tiempo real en la Arena
+    @Query("SELECT reglaDuelo FROM mesa WHERE idMesa = :idMesa")
+    LiveData<String> obtenerReglaPorIdMesa(int idMesa);
+
+    // 🔥 NUEVA CONSULTA SÍNCRONA: Para que el ViewModel la use en procesos de fondo
+    @Query("SELECT reglaDuelo FROM mesa WHERE idMesa = :idMesa")
+    String obtenerReglaSincrona(int idMesa);
 
 }

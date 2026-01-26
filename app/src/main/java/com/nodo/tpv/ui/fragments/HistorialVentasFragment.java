@@ -1,18 +1,25 @@
 package com.nodo.tpv.ui.fragments;
 
-import android.app.AlertDialog;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Bundle;
-
-import androidx.fragment.app.Fragment;
-import androidx.lifecycle.ViewModelProvider;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
+import android.util.Base64;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.transition.TransitionManager;
 
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.HistorialAdapter;
@@ -27,41 +34,48 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
-
 public class HistorialVentasFragment extends Fragment {
 
-    private RecyclerView rv;
+    private RecyclerView rvHistorial, rvDetalleIntegrado;
     private HistorialAdapter adapter;
-    private ProductoViewModel productoViewModel; // Unificado el nombre
-    private TextView tvTotalDia, tvTotalEfectivo, tvTotalDigital;
+    private TicketProductosAdapter ticketAdapter;
+    private ProductoViewModel productoViewModel;
 
-    public HistorialVentasFragment() {
-        // Required empty public constructor
-    }
+    private View layoutListaHistorial, layoutDetalleVentaIntegrado,
+            layoutEvidenciaIntegrada, layoutNoFotoMsg, layoutDashboardExtra;
+    private TextView tvTotalDia, tvTotalEfectivo, tvTotalDigital, tvInfoVentaIntegrada;
+    private ImageView ivFotoEvidenciaIntegrada;
+    private ImageButton btnVolverALista;
 
     @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                             Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_historial_ventas, container, false);
 
+        // Dashboard
         tvTotalDia = view.findViewById(R.id.tvTotalDia);
         tvTotalEfectivo = view.findViewById(R.id.tvTotalEfectivo);
         tvTotalDigital = view.findViewById(R.id.tvTotalDigital);
-        rv = view.findViewById(R.id.rvHistorial);
+        layoutDashboardExtra = view.findViewById(R.id.layoutDashboardExtra);
 
-        // 1. Configurar Adapter Principal
-        rv.setLayoutManager(new LinearLayoutManager(getContext()));
-        adapter = new HistorialAdapter();
+        // Paneles Principales
+        layoutListaHistorial = view.findViewById(R.id.layoutListaHistorial);
+        layoutDetalleVentaIntegrado = view.findViewById(R.id.layoutDetalleVentaIntegrado);
 
-        // Listener para abrir el ticket al tocar una venta
-        adapter.setOnVentaClickListener(this::mostrarDialogoTicket);
+        // Elementos Auditoría
+        tvInfoVentaIntegrada = view.findViewById(R.id.tvInfoVentaIntegrada);
+        ivFotoEvidenciaIntegrada = view.findViewById(R.id.ivFotoEvidenciaIntegrada);
+        layoutEvidenciaIntegrada = view.findViewById(R.id.layoutEvidenciaIntegrada);
+        layoutNoFotoMsg = view.findViewById(R.id.layoutNoFotoMsg);
+        btnVolverALista = view.findViewById(R.id.btnVolverALista);
 
-        rv.setAdapter(adapter);
+        rvHistorial = view.findViewById(R.id.rvHistorial);
+        rvDetalleIntegrado = view.findViewById(R.id.rvDetalleVentaUnica);
 
-        // 2. Inicializar ViewModel
+        configurarUI();
+
         productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
 
-        // 3. Observar cambios en el historial (Lista General)
+        // Observar historial general
         productoViewModel.obtenerTodoElHistorial().observe(getViewLifecycleOwner(), lista -> {
             if (lista != null) {
                 adapter.setLista(lista);
@@ -69,7 +83,74 @@ public class HistorialVentasFragment extends Fragment {
             }
         });
 
+        btnVolverALista.setOnClickListener(v -> cerrarDetalle());
+
         return view;
+    }
+
+    private void configurarUI() {
+        // CAMBIO CLAVE: Usamos LinearLayoutManager para que el item ocupe TODA la fila
+        rvHistorial.setLayoutManager(new LinearLayoutManager(getContext()));
+
+        adapter = new HistorialAdapter();
+        adapter.setOnVentaClickListener(this::abrirDetalle);
+        rvHistorial.setAdapter(adapter);
+
+        // Recycler del Detalle interno
+        rvDetalleIntegrado.setLayoutManager(new LinearLayoutManager(getContext()));
+        ticketAdapter = new TicketProductosAdapter();
+        rvDetalleIntegrado.setAdapter(ticketAdapter);
+    }
+
+    private void abrirDetalle(VentaHistorial venta) {
+        // Animación suave de transición
+        TransitionManager.beginDelayedTransition((ViewGroup) getView());
+
+        // Colapsar dashboard y cambiar vistas
+        layoutDashboardExtra.setVisibility(View.GONE);
+        layoutListaHistorial.setVisibility(View.GONE);
+        layoutDetalleVentaIntegrado.setVisibility(View.VISIBLE);
+
+        // Info de cabecera
+        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy - hh:mm a", Locale.getDefault());
+        tvInfoVentaIntegrada.setText("Cliente: " + venta.nombreCliente.toUpperCase() + " | " + sdf.format(new Date(venta.fechaLong)));
+
+        // Gestión de la foto
+        if (venta.fotoComprobante != null && !venta.fotoComprobante.isEmpty()) {
+            try {
+                byte[] decoded = Base64.decode(venta.fotoComprobante, Base64.NO_WRAP);
+                Bitmap bitmap = BitmapFactory.decodeByteArray(decoded, 0, decoded.length);
+                ivFotoEvidenciaIntegrada.setImageBitmap(bitmap);
+                layoutEvidenciaIntegrada.setVisibility(View.VISIBLE);
+                layoutNoFotoMsg.setVisibility(View.GONE);
+            } catch (Exception e) {
+                mostrarSinEvidencia();
+            }
+        } else {
+            mostrarSinEvidencia();
+        }
+
+        // 🔥 CARGA DE PRODUCTOS: Aquí es donde traemos el detalle de la venta
+        // Usamos el ID de la venta padre para filtrar en 'venta_detalle_historial'
+        productoViewModel.obtenerDetallesTicket(venta.idVenta, detalles -> {
+            if (detalles != null && !detalles.isEmpty()) {
+                ticketAdapter.setLista(detalles);
+            } else {
+                Log.d("TPV", "No se encontraron productos para la venta: " + venta.idVenta);
+            }
+        });
+    }
+
+    private void mostrarSinEvidencia() {
+        layoutEvidenciaIntegrada.setVisibility(View.GONE);
+        layoutNoFotoMsg.setVisibility(View.VISIBLE);
+    }
+
+    private void cerrarDetalle() {
+        TransitionManager.beginDelayedTransition((ViewGroup) getView());
+        layoutDashboardExtra.setVisibility(View.VISIBLE);
+        layoutDetalleVentaIntegrado.setVisibility(View.GONE);
+        layoutListaHistorial.setVisibility(View.VISIBLE);
     }
 
     private void actualizarDashboard(List<VentaHistorial> lista) {
@@ -86,66 +167,9 @@ public class HistorialVentasFragment extends Fragment {
             }
         }
 
-        NumberFormat nf = NumberFormat.getCurrencyInstance();
+        NumberFormat nf = NumberFormat.getCurrencyInstance(new Locale("es", "CO"));
         tvTotalDia.setText(nf.format(total));
         tvTotalEfectivo.setText(nf.format(efectivo));
         tvTotalDigital.setText(nf.format(digital));
-    }
-
-    private void mostrarDialogoTicket(VentaHistorial venta) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
-        View view = getLayoutInflater().inflate(R.layout.layout_ticket_detalle, null);
-
-        TextView tvFecha = view.findViewById(R.id.tvFechaTicket);
-        TextView tvCliente = view.findViewById(R.id.tvClienteTicket);
-        TextView tvTotal = view.findViewById(R.id.tvTotalTicket);
-        TextView tvMetodo = view.findViewById(R.id.tvMetodoTicket);
-        RecyclerView rvDetalle = view.findViewById(R.id.rvDetalleTicket);
-        Button btnCerrar = view.findViewById(R.id.btnCerrarTicket);
-
-        // OPCIONAL: Botón de confirmar (si decides agregarlo al XML)
-        // Button btnConfirmar = view.findViewById(R.id.btnConfirmarPagoAdmin);
-
-        // Llenar datos básicos
-        SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault());
-        tvFecha.setText(sdf.format(new Date(venta.fechaLong)));
-        tvCliente.setText("CLIENTE: " + venta.nombreCliente.toUpperCase());
-        tvMetodo.setText("MÉTODO DE PAGO: " + venta.metodoPago);
-
-        NumberFormat nf = NumberFormat.getCurrencyInstance();
-        tvTotal.setText(nf.format(venta.montoTotal));
-
-        // Configurar el RecyclerView interno del ticket
-        rvDetalle.setLayoutManager(new LinearLayoutManager(getContext()));
-        TicketProductosAdapter ticketAdapter = new TicketProductosAdapter();
-        rvDetalle.setAdapter(ticketAdapter);
-
-        productoViewModel.obtenerDetallesTicket(venta.idVenta, detalles -> {
-            if (detalles != null) {
-                // Aquí podrías incluso separar la lista en dos grupos: Normal y Duelo
-                ticketAdapter.setLista(detalles);
-            }
-        });
-
-        AlertDialog dialog = builder.setView(view).create();
-
-        // Hacer el fondo transparente para que se vea el estilo del ticket
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-        }
-
-        // Lógica para confirmar pago si está PENDIENTE
-        /* if (venta.estado.equals("PENDIENTE")) {
-            btnConfirmar.setVisibility(View.VISIBLE);
-            btnConfirmar.setOnClickListener(v -> {
-                productoViewModel.confirmarPagoAdmin(venta.idVenta);
-                dialog.dismiss();
-                Toast.makeText(getContext(), "Pago Confirmado por Administrador", Toast.LENGTH_SHORT).show();
-            });
-        }
-        */
-
-        btnCerrar.setOnClickListener(v -> dialog.dismiss());
-        dialog.show();
     }
 }

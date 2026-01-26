@@ -6,4 +6,7 @@ public class DetalleHistorialDuelo {
     public int idEquipo;
     public java.math.BigDecimal precioEnVenta;
     public long fechaLong; // Para ordenar y mostrar hora
+
+    public String estado;
+    public int idDetalle; // 🔥 AGREGAR ESTO: Clave para la actualización
 }

@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.ProductoAdapter;
+import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.viewmodel.ProductoViewModel;
 import java.math.BigDecimal;
@@ -40,14 +41,13 @@ public class CatalogoProductosFragment extends Fragment {
     private LinearLayout layoutDetalleColapsable;
     private ImageView btnMinimizarResumen;
     private boolean estaMinimizado = true;
+    private int idMesaActual;
 
-    /**
-     * @param idCliente Usar 0 para indicar "Modo Apuesta / Arena"
-     */
-    public static CatalogoProductosFragment newInstance(int idCliente) {
+    public static CatalogoProductosFragment newInstance(int idCliente, int idMesa) {
         CatalogoProductosFragment fragment = new CatalogoProductosFragment();
         Bundle args = new Bundle();
         args.putInt("id_cliente", idCliente);
+        args.putInt("id_mesa", idMesa);
         fragment.setArguments(args);
         return fragment;
     }
@@ -64,6 +64,7 @@ public class CatalogoProductosFragment extends Fragment {
 
         if (getArguments() != null) {
             idClienteSeleccionado = getArguments().getInt("id_cliente");
+            idMesaActual = getArguments().getInt("id_mesa");
         }
 
         // 1. Vincular Vistas
@@ -74,43 +75,55 @@ public class CatalogoProductosFragment extends Fragment {
         btnMinimizarResumen = view.findViewById(R.id.btnMinimizarResumen);
         RecyclerView rvResumen = view.findViewById(R.id.rvResumenApuesta);
 
-        // 2. Configurar Resumen (Bolsa de Apuesta)
+        // 2. Configurar Resumen (Lógica reactiva a la DB)
         rvResumen.setLayoutManager(new LinearLayoutManager(getContext()));
-        resumenAdapter = new ResumenContableAdapter(productoEliminar -> {
-            List<Producto> actual = new ArrayList<>(productoViewModel.getListaApuesta().getValue());
-            actual.remove(productoEliminar);
-            productoViewModel.actualizarListaApuesta(actual);
+        resumenAdapter = new ResumenContableAdapter(productoItem -> {
+            // El idProducto aquí contiene el idDetalle de la DB. Cambiamos estado a CANCELADO.
+            productoViewModel.eliminarDetallePendiente(productoItem.idProducto);
+            Toast.makeText(getContext(), "Producto quitado", Toast.LENGTH_SHORT).show();
         });
         rvResumen.setAdapter(resumenAdapter);
 
         // 3. Lógica Colapsable
         btnMinimizarResumen.setOnClickListener(v -> toggleResumen((ViewGroup) view));
 
-        // 4. Observar la Bolsa (SOLO SI idClienteSeleccionado == 0)
-        // Esto evita que el resumen de apuesta aparezca cuando vendes a un cliente individual
-        productoViewModel.getListaApuesta().observe(getViewLifecycleOwner(), productos -> {
-            if (idClienteSeleccionado == 0 && productos != null && !productos.isEmpty()) {
-                cardResumenContable.setVisibility(View.VISIBLE);
-                resumenAdapter.updateList(productos);
+        // 4. Observar PENDIENTES de la Mesa (Reemplaza la observación de listaApuesta)
+        if (idClienteSeleccionado == 0) {
+            productoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), listaPendientes -> {
+                if (listaPendientes != null && !listaPendientes.isEmpty()) {
+                    cardResumenContable.setVisibility(View.VISIBLE);
 
-                BigDecimal total = BigDecimal.ZERO;
-                for (Producto p : productos) {
-                    total = total.add(p.getPrecioProducto());
+                    List<Producto> visuales = new ArrayList<>();
+                    BigDecimal totalSuma = BigDecimal.ZERO;
+
+                    for (DetalleHistorialDuelo d : listaPendientes) {
+                        Producto p = new Producto();
+                        p.idProducto = d.idDetalle; // Referencia para poder cancelar
+                        p.setNombreProducto(d.nombreProducto);
+                        p.setPrecioProducto(d.precioEnVenta);
+                        visuales.add(p);
+                        totalSuma = totalSuma.add(d.precioEnVenta);
+                    }
+
+                    resumenAdapter.updateList(visuales);
+                    tvTotalResumen.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(totalSuma));
+                } else {
+                    // Si el admin entrega o se cancela, el card desaparece automáticamente
+                    cardResumenContable.setVisibility(View.GONE);
                 }
-                tvTotalResumen.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(total));
-            } else {
-                cardResumenContable.setVisibility(View.GONE);
-            }
-        });
+            });
+        }
 
-        // 5. Botón Limpiar Bolsa
+        // 5. Botón Limpiar Bolsa (Cambia estado de todos los pendientes a CANCELADO)
         view.findViewById(R.id.btnLimpiarApuesta).setOnClickListener(v -> {
-            productoViewModel.limpiarApuesta();
+            productoViewModel.cancelarMunicionPendienteMesa(idMesaActual);
             Toast.makeText(getContext(), "Bolsa vaciada", Toast.LENGTH_SHORT).show();
         });
 
-        // 6. Botón Finalizar
-        btnFinalizarSeleccion.setOnClickListener(v -> requireActivity().getSupportFragmentManager().popBackStack());
+        // 6. Botón Finalizar (Simplemente cierra, ya que los datos se guardan en cada diálogo)
+        btnFinalizarSeleccion.setOnClickListener(v -> {
+            requireActivity().getSupportFragmentManager().popBackStack();
+        });
 
         // 7. Catálogo Principal
         RecyclerView rvProductos = view.findViewById(R.id.rvProductos);
@@ -118,7 +131,6 @@ public class CatalogoProductosFragment extends Fragment {
         ProductoAdapter adapter = new ProductoAdapter();
         rvProductos.setAdapter(adapter);
 
-        // Listener modificado para pasar por el diálogo de cantidad
         adapter.setOnProductoClickListener(this::mostrarDialogoCantidad);
 
         productoViewModel.getProductosResultados().observe(getViewLifecycleOwner(), adapter::setProductos);
@@ -168,28 +180,24 @@ public class CatalogoProductosFragment extends Fragment {
         AlertDialog dialog = builder.setView(dialogView).create();
 
         btnConfirmar.setOnClickListener(v -> {
-            // USAMOS EL ID RECIBIDO PARA DECIDIR
             if (idClienteSeleccionado == 0) {
-                // CAMINO ARENA: Agrega a la bolsa temporal (APUESTA)
-                for (int i = 0; i < contadorLocal[0]; i++) {
-                    productoViewModel.agregarProductoAApuesta(producto);
-                }
-                Toast.makeText(getContext(), "Añadido a la apuesta", Toast.LENGTH_SHORT).show();
+                // Modo Arena: Se inserta directo a DB como PENDIENTE
+                productoViewModel.insertarMunicionDueloPendiente(idMesaActual, producto, contadorLocal[0]);
+                Toast.makeText(getContext(), "Pedido enviado al Badge ⏳", Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
-                // En modo duelo no cerramos el catálogo para poder agregar más "munición"
+                // No cerramos el fragmento para que pueda seguir pidiendo
             } else {
-                // CAMINO CLIENTE INDIVIDUAL: Inserta directo a la DB
-                productoViewModel.insertarConsumoDirecto(idClienteSeleccionado, producto, contadorLocal[0]);
-                Toast.makeText(getContext(), "Cargado a la cuenta", Toast.LENGTH_SHORT).show();
+                // Modo Cliente Individual
+                productoViewModel.insertarConsumoDirectoEntregado(idClienteSeleccionado, producto, contadorLocal[0]);
+                Toast.makeText(getContext(), "Producto cargado ✅", Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
-                // Cerramos el catálogo porque es una venta personal directa
                 requireActivity().getSupportFragmentManager().popBackStack();
             }
         });
         dialog.show();
     }
 
-    // --- ADAPTADOR INTERNO (Sin cambios, funcional) ---
+    // Adaptador Interno
     private static class ResumenContableAdapter extends RecyclerView.Adapter<ResumenContableAdapter.ViewHolder> {
         private List<Producto> items = new ArrayList<>();
         private final OnItemDeleteListener listener;
