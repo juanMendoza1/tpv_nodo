@@ -15,6 +15,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.transition.TransitionManager;
@@ -112,50 +113,54 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
 
     @Override
     public void onLoginExitoso(Usuario usuario) {
-        // 1. Iniciamos la expansión primero (con la animación de 600ms que definimos)
-        setExpandirContenedor(true);
+        // 1. Forzamos la vista 70/30 (false = no expandir al 100%)
+        setExpandirContenedor(false);
 
-        // 2. Usamos un pequeño delay para que el fragmento aparezca
-        // mientras la pantalla ya se está estirando. ¡Se ve mucho más pro!
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-
             if (isFinishing()) return;
 
             FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+            transaction.setCustomAnimations(R.anim.slide_in_right, android.R.anim.fade_out);
 
-            // Usamos animaciones que den sensación de expansión lateral
-            transaction.setCustomAnimations(
-                    R.anim.slide_in_right, // El nuevo fragment entra desde la derecha
-                    android.R.anim.fade_out
-            );
+            // Limpiar pantallas de bloqueo
+            getSupportFragmentManager().popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
 
-            // Limpiamos historial
-            getSupportFragmentManager().popBackStack(null,
-                    androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
+            // 2. Asegurar que el fragmento de sesión esté en su lugar (Derecha)
+            transaction.replace(R.id.container_right, new FragmentSesion());
 
+            // 3. Cargar la espera de venta (Izquierda)
             transaction.replace(R.id.container_fragments, new FragmentEsperaVenta());
+
             transaction.commitAllowingStateLoss();
-
-            Toast.makeText(this, "Bienvenido, " + usuario.nombreUsuario, Toast.LENGTH_SHORT).show();
-
-        }, 150); // Delay corto para sincronizar con setExpandirContenedor
+        }, 150);
     }
 
     @Override
     public void onLogout() {
+        // 1. Limpiar la sesión en el storage
+        if (sessionManager != null) {
+            sessionManager.borrarSesion();
+        }
+
+        // 2. Resetear la pantalla al 50/50 dinámicamente
+        setExpandirContenedor(false);
+
+        // 3. Transacción de fragmentos
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
         transaction.setCustomAnimations(android.R.anim.fade_in, android.R.anim.slide_out_right);
 
-        getSupportFragmentManager().popBackStack(null, androidx.fragment.app.FragmentManager.POP_BACK_STACK_INCLUSIVE);
+        // Limpiar el historial para que no puedan volver atrás
+        getSupportFragmentManager().popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
 
         transaction.replace(R.id.container_fragments, new FragmentBloqueo());
+        // Aseguramos que el panel de sesión también se resetee si es necesario
+        transaction.replace(R.id.container_right, new FragmentSesion());
+
         transaction.commit();
+
+        Toast.makeText(this, "Turno finalizado", Toast.LENGTH_SHORT).show();
     }
 
-    /**
-     * 🔥 Función Principal de Apertura de Mesa
-     * Recibe la modalidad elegida en el diálogo del FragmentSesion
-     */
     @Override
     public void onComandoAbrirMesa(int idMesa, String tipoJuego) {
         ListaClientesFragment fragment = new ListaClientesFragment();
@@ -195,37 +200,32 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
             ConstraintSet set = new ConstraintSet();
             set.clone(layoutRaiz);
 
-            // Preparamos la transición suave
             androidx.transition.ChangeBounds transition = new androidx.transition.ChangeBounds();
-            transition.setDuration(600); // 600ms es el "punto dulce" para tablets
-            transition.setInterpolator(new android.view.animation.AnticipateOvershootInterpolator(1.0f));
+            transition.setDuration(600);
+            transition.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
 
             if (expandir) {
-                // --- ANIMACIÓN HACIA 100% ---
-
-                // 1. Animamos la opacidad del panel antes de ocultarlo
-                panelDerecho.animate().alpha(0f).setDuration(300).withEndAction(() -> {
-                    panelDerecho.setVisibility(View.GONE);
-                }).start();
-
-                // 2. Rompemos la guía y pegamos al borde derecho
-                set.clear(R.id.container_fragments, ConstraintSet.END);
+                // --- MODO 100% (Pantalla Completa) ---
+                panelDerecho.setVisibility(View.GONE);
                 set.connect(R.id.container_fragments, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0);
-
             } else {
-                // --- ANIMACIÓN HACIA 70/30 ---
-
+                // --- MODO DINÁMICO (50/50 o 70/30) ---
                 panelDerecho.setVisibility(View.VISIBLE);
-                panelDerecho.setAlpha(0f);
-                panelDerecho.animate().alpha(1f).setDuration(600).start();
+                panelDerecho.setAlpha(1.0f);
 
-                // Restauramos la conexión al Guideline
-                set.clear(R.id.container_fragments, ConstraintSet.END);
+                // Decidimos el porcentaje según si hay un usuario logueado
+                float porcentaje = (sessionManager.obtenerUsuario() != null) ? 0.7f : 0.5f;
+
+                // MOVER EL GUIDELINE DINÁMICAMENTE
+                set.setGuidelinePercent(R.id.guideline, porcentaje);
+
+                // Re-conectar todo al guideline
                 set.connect(R.id.container_fragments, ConstraintSet.END, R.id.guideline, ConstraintSet.START, 0);
+                set.connect(R.id.container_right, ConstraintSet.START, R.id.guideline, ConstraintSet.END, 0);
+                set.connect(R.id.container_right, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END, 0);
             }
 
-            // Ejecutamos la animación de los layouts
-            androidx.transition.TransitionManager.beginDelayedTransition(layoutRaiz, transition);
+            TransitionManager.beginDelayedTransition(layoutRaiz, transition);
             set.applyTo(layoutRaiz);
         });
     }

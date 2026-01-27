@@ -7,6 +7,7 @@ import androidx.room.Query;
 import androidx.room.Update;
 
 import com.nodo.tpv.data.entities.Usuario;
+import java.util.List;
 
 @Dao
 public interface UsuarioDao {
@@ -20,6 +21,10 @@ public interface UsuarioDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertarOActualizar(Usuario usuario);
 
+    // NUEVO: Método que te faltaba para obtener la lista de todos los slots
+    @Query("SELECT * FROM usuario ORDER BY nombreUsuario ASC")
+    List<Usuario> obtenerTodos();
+
     @Query("SELECT * FROM usuario WHERE idUsuario = :id LIMIT 1")
     Usuario obtenerUsuarioPorId(int id);
 
@@ -27,6 +32,5 @@ public interface UsuarioDao {
     Usuario obtenerUsuarioPersistente();
 
     @Query("DELETE FROM usuario")
-    void eliminarTodos();  // por si deseas reiniciar la app
-
+    void eliminarTodos();
 }

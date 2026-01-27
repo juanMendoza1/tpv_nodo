@@ -33,7 +33,7 @@ public class FragmentEsperaVenta extends Fragment {
 
     private RecyclerView rvMesas;
     private final ExecutorService executorService = Executors.newFixedThreadPool(4);
-    private boolean isExpanded = true; // Control de pantalla completa
+    private boolean isExpanded = false; // Control de pantalla completa
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -57,10 +57,12 @@ public class FragmentEsperaVenta extends Fragment {
             isExpanded = !isExpanded;
             if (requireActivity() instanceof MainActivity) {
                 ((MainActivity) requireActivity()).setExpandirContenedor(isExpanded);
-                btnExpandir.setIconResource(isExpanded ? R.drawable.ic_fullscreen_exit : R.drawable.ic_fullscreen);
+
+                // Cambiar texto según el estado
                 btnExpandir.setText(isExpanded ? "CONTRAER" : "EXPANDIR");
             }
         });
+        //btnExpandir.animate().rotation(isExpanded ? 360f : 0f).setDuration(600).start();
 
         // 2. Lógica de Habilitar Mesa (Trasladada de FragmentSesion)
         btnHabilitarDirecto.setOnClickListener(v -> {

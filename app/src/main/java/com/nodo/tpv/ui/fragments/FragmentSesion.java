@@ -1,58 +1,107 @@
 package com.nodo.tpv.ui.fragments;
 
+import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
-import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.fragment.app.Fragment;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.provider.Settings;
+import android.util.Log;
+import android.util.Size;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.camera.core.CameraSelector;
+import androidx.camera.core.ImageAnalysis;
+import androidx.camera.core.ImageProxy;
+import androidx.camera.core.Preview;
+import androidx.camera.lifecycle.ProcessCameraProvider;
+import androidx.camera.view.PreviewView;
+import androidx.core.content.ContextCompat;
+import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.progressindicator.CircularProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.mlkit.vision.barcode.BarcodeScanner;
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions;
+import com.google.mlkit.vision.barcode.BarcodeScanning;
+import com.google.mlkit.vision.barcode.common.Barcode;
+import com.google.mlkit.vision.common.InputImage;
+
 import com.nodo.tpv.R;
+import com.nodo.tpv.data.api.RetrofitClient;
 import com.nodo.tpv.data.database.AppDatabase;
+import com.nodo.tpv.data.entities.TerminalDispositivo;
 import com.nodo.tpv.data.entities.Usuario;
+import com.nodo.tpv.adapters.UsuarioSlotAdapter;
 import com.nodo.tpv.util.SessionManager;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+
 public class FragmentSesion extends Fragment {
 
-    private LinearLayout layoutLogin, layoutComandos;
-    private TextInputEditText etUsuario, etPin;
+    private static final String TAG = "TPV_SCANNER";
+    private LinearLayout layoutLogin, layoutComandos, layoutActivacion;
+    private MaterialCardView cardCamera;
+    private PreviewView previewView;
+    private CircularProgressIndicator loadingScanner;
+    private TextInputEditText etPin;
+    private TextInputLayout tilPin;
     private TextView tvUsuarioActivo;
-    private Button btnLogin, btnSalir;
+    private Button btnLogin, btnSalir, btnEscanearQR;
+
+    // Elementos para el listado de Slots
+    private RecyclerView rvSlots;
+    private UsuarioSlotAdapter adapter;
+    private Usuario usuarioSeleccionado;
+
     private SessionManager sessionManager;
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+    private ExecutorService cameraExecutor;
+    private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
+    private String androidId;
+    private boolean isScanning = false;
+    private ProcessCameraProvider cameraProvider;
+    private BarcodeScanner qrScanner;
 
     public interface OnSesionListener {
         void onLoginExitoso(Usuario usuario);
         void onLogout();
-
         void onComandoAbrirMesa(int idMesa, String tipoJuego);
-
-        // Compatibilidad con llamadas sin parámetros
         void onComandoAbrirMesa();
     }
 
     private OnSesionListener listener;
 
-    public FragmentSesion() {
-        // Required empty public constructor
-    }
-
     @Override
     public void onAttach(@NonNull Context context) {
         super.onAttach(context);
-        if (context instanceof OnSesionListener) {
-            listener = (OnSesionListener) context;
-        }
+        if (context instanceof OnSesionListener) listener = (OnSesionListener) context;
     }
 
     @Override
@@ -64,78 +113,422 @@ public class FragmentSesion extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         sessionManager = new SessionManager(requireContext());
+        cameraExecutor = Executors.newSingleThreadExecutor();
 
-        // Referencias UI
+        // 1. Vincular Vistas (Asegúrate que los IDs existen en fragment_sesion.xml)
+        layoutActivacion = view.findViewById(R.id.layoutActivacion);
         layoutLogin = view.findViewById(R.id.layoutLogin);
         layoutComandos = view.findViewById(R.id.layoutComandos);
-        etUsuario = view.findViewById(R.id.etUsuarioLogin);
-        etPin = view.findViewById(R.id.etPinLogin);
-        tvUsuarioActivo = view.findViewById(R.id.tvUsuarioActivo);
+        cardCamera = view.findViewById(R.id.cardCamera);
+        previewView = view.findViewById(R.id.previewView);
+        loadingScanner = view.findViewById(R.id.loadingScanner);
 
+        etPin = view.findViewById(R.id.etPinLogin);
+        tilPin = view.findViewById(R.id.tilPin);
+        tvUsuarioActivo = view.findViewById(R.id.tvUsuarioActivo);
         btnLogin = view.findViewById(R.id.btnLogin);
         btnSalir = view.findViewById(R.id.btnCerrarSesion);
+        btnEscanearQR = view.findViewById(R.id.btnEscanearQR);
 
-        // 1. Verificar sesión al cargar
-        Usuario sesionGuardada = sessionManager.obtenerUsuario();
-        if (sesionGuardada != null) {
-            activarModoComandos(sesionGuardada);
-        } else {
-            activarModoLogin();
+        // 2. Configurar RecyclerView de Slots
+        rvSlots = view.findViewById(R.id.rvSlots);
+        if (rvSlots != null) {
+            rvSlots.setLayoutManager(new LinearLayoutManager(getContext()));
+            adapter = new UsuarioSlotAdapter(usuario -> {
+                usuarioSeleccionado = usuario;
+                Log.d(TAG, "Usuario seleccionado: " + usuario.nombreUsuario);
+                if (tilPin != null) tilPin.setVisibility(View.VISIBLE);
+                if (btnLogin != null) btnLogin.setVisibility(View.VISIBLE);
+                etPin.requestFocus();
+            });
+            rvSlots.setAdapter(adapter);
         }
 
-        // 2. Click Login
-        btnLogin.setOnClickListener(v -> procesarLogin());
+        androidId = Settings.Secure.getString(requireContext().getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // 3. Click Salir (Logout)
-        btnSalir.setOnClickListener(v -> {
-            new MaterialAlertDialogBuilder(requireContext())
-                    .setTitle("Cerrar Sesión")
-                    .setMessage("¿Deseas finalizar tu turno actual?")
-                    .setPositiveButton("Cerrar", (dialog, which) -> {
-                        sessionManager.borrarSesion();
-                        activarModoLogin();
-                        if (listener != null) listener.onLogout();
-                    })
-                    .setNegativeButton("Cancelar", null).show();
+        // 3. Scanner Setup
+        BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
+                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                .build();
+        qrScanner = BarcodeScanning.getClient(options);
+
+        validarEstadoTerminal();
+
+        btnEscanearQR.setOnClickListener(v -> checkCameraPermission());
+        btnLogin.setOnClickListener(v -> procesarLoginConPin());
+        btnSalir.setOnClickListener(v -> logoutConfirm());
+    }
+
+    private void checkCameraPermission() {
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            startCamera();
+        } else {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, 101);
+        }
+    }
+
+    private void startCamera() {
+        cardCamera.setVisibility(View.VISIBLE);
+        btnEscanearQR.setVisibility(View.GONE);
+        loadingScanner.setVisibility(View.GONE);
+        previewView.setAlpha(1.0f);
+        isScanning = true;
+
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext());
+        cameraProviderFuture.addListener(() -> {
+            try {
+                cameraProvider = cameraProviderFuture.get();
+                Preview preview = new Preview.Builder().build();
+                preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+                ImageAnalysis imageAnalysis = new ImageAnalysis.Builder()
+                        .setTargetResolution(new Size(1280, 720))
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build();
+
+                imageAnalysis.setAnalyzer(cameraExecutor, this::procesarImagenQR);
+
+                cameraProvider.unbindAll();
+                cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageAnalysis);
+            } catch (Exception e) {
+                Log.e(TAG, "Error startCamera: " + e.getMessage());
+            }
+        }, ContextCompat.getMainExecutor(requireContext()));
+    }
+
+    @SuppressLint("UnsafeOptInUsageError")
+    private void procesarImagenQR(@NonNull ImageProxy imageProxy) {
+        if (imageProxy.getImage() == null || !isScanning) {
+            imageProxy.close();
+            return;
+        }
+
+        InputImage image = InputImage.fromMediaImage(
+                imageProxy.getImage(),
+                imageProxy.getImageInfo().getRotationDegrees()
+        );
+
+        qrScanner.process(image)
+                .addOnSuccessListener(barcodes -> {
+                    if (barcodes.size() > 0 && isScanning) {
+                        for (Barcode barcode : barcodes) {
+                            String rawValue = barcode.getRawValue();
+                            if (rawValue != null && !rawValue.isEmpty()) {
+                                isScanning = false;
+                                manejarResultadoQR(rawValue);
+                                break;
+                            }
+                        }
+                    }
+                })
+                .addOnFailureListener(e -> Log.e(TAG, "Error MLKit: " + e.getMessage()))
+                .addOnCompleteListener(task -> imageProxy.close());
+    }
+
+    private void manejarResultadoQR(String rawValue) {
+        if (getActivity() == null) return;
+        getActivity().runOnUiThread(() -> {
+            vibrarDeteccion();
+            loadingScanner.setVisibility(View.VISIBLE);
+            previewView.setAlpha(0.4f);
+
+            if (cameraProvider != null) cameraProvider.unbindAll();
+
+            try {
+                Long empresaId = 0L;
+                String programaCod = rawValue;
+
+                if (rawValue.contains("|")) {
+                    String[] parts = rawValue.split("\\|");
+                    empresaId = Long.parseLong(parts[0]);
+                    programaCod = parts[1];
+                }
+
+                ejecutarActivacionTerminal(empresaId, programaCod);
+            } catch (Exception e) {
+                Log.e(TAG, "Error procesando código: " + e.getMessage());
+                resetStateAfterError("Código QR no tiene el formato correcto");
+            }
         });
     }
 
-    private void procesarLogin() {
-        String u = etUsuario.getText().toString().trim();
-        String p = etPin.getText().toString().trim();
-        if (!u.isEmpty() && !p.isEmpty()) {
-            Usuario user = new Usuario();
-            user.idUsuario = 101;
-            user.nombreUsuario = u.toUpperCase();
-            user.idMesa = 1; // ID de referencia para esta terminal
-
-            executorService.execute(() -> {
-                AppDatabase.getInstance(requireContext()).usuarioDao().insertarOActualizar(user);
-                sessionManager.guardarUsuario(user);
-                if (getActivity() != null) {
-                    getActivity().runOnUiThread(() -> {
-                        activarModoComandos(user);
-                        if (listener != null) listener.onLoginExitoso(user);
-                    });
+    private void vibrarDeteccion() {
+        try {
+            Vibrator vibrator = (Vibrator) requireContext().getSystemService(Context.VIBRATOR_SERVICE);
+            if (vibrator != null && vibrator.hasVibrator()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE));
+                } else {
+                    vibrator.vibrate(200);
                 }
-            });
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error vibración: " + e.getMessage());
         }
     }
 
+    private void ejecutarActivacionTerminal(Long idDelQR, String token) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("token", token);
+        payload.put("uuidHardware", androidId);
+        payload.put("marca", Build.MANUFACTURER);
+        payload.put("modelo", Build.MODEL);
+        // IMPORTANTE: Agregamos el alias porque el Backend lo pide con .toString()
+        payload.put("alias", "Tablet " + Build.MODEL);
+
+        Log.d(TAG, "Enviando activación... Token: " + token);
+
+        RetrofitClient.getInterface(requireContext()).activarTerminal(payload)
+                .enqueue(new Callback<Map<String, Object>>() {
+                    @Override
+                    public void onResponse(@NonNull Call<Map<String, Object>> call, @NonNull Response<Map<String, Object>> response) {
+                        if (!isAdded()) return; // Siempre verifica si el fragmento sigue activo
+
+                        if (response.isSuccessful() && response.body() != null) {
+                            Map<String, Object> body = response.body();
+                            long idReal = 0;
+
+                            if (body.containsKey("empresaId")) {
+                                Object val = body.get("empresaId");
+                                if (val != null) {
+                                    // GSON convierte números a Double en Maps, esto es seguro:
+                                    idReal = Double.valueOf(val.toString()).longValue();
+                                }
+                            }
+
+                            // Respaldo dinámico
+                            if (idReal <= 0) idReal = idDelQR;
+
+                            if (idReal > 0) {
+                                Log.d(TAG, "Empresa vinculada: " + idReal);
+                                sessionManager.guardarConfiguracionTerminal(androidId, idReal);
+                                activarModoLogin();
+                            } else {
+                                resetStateAfterError("Error: El servidor no asignó una empresa.");
+                            }
+                        } else {
+                            // Aquí capturamos el error 400/500 del servidor
+                            Log.e(TAG, "Error en el servidor: " + response.code());
+                            resetStateAfterError("Fallo en vinculación: " + response.code());
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<Map<String, Object>> call, @NonNull Throwable t) {
+                        if (isAdded()) resetStateAfterError("Error de red: " + t.getMessage());
+                    }
+                });
+    }
+
+    private void cargarSlots() {
+        // 1. Obtener el ID de forma dinámica desde el SessionManager
+        long empresaId = sessionManager.getEmpresaId();
+
+        // Validación de seguridad: Si no hay ID, no intentamos la petición
+        if (empresaId <= 0) {
+            Log.e(TAG, "No se puede cargar slots: empresaId no válido (" + empresaId + ")");
+            return;
+        }
+
+        Log.d(TAG, "Solicitando slots al servidor para empresa ID: " + empresaId);
+
+        RetrofitClient.getInterface(requireContext()).obtenerUsuariosPorEmpresa(empresaId)
+                .enqueue(new Callback<List<Usuario>>() {
+                    @Override
+                    public void onResponse(@NonNull Call<List<Usuario>> call, @NonNull Response<List<Usuario>> response) {
+                        if (!isAdded()) return; // Evitar crashes si el usuario cerró el fragment
+
+                        if (response.isSuccessful() && response.body() != null) {
+                            List<Usuario> lista = response.body();
+                            Log.d(TAG, "Conexión exitosa. Usuarios recibidos: " + lista.size());
+
+                            // 2. Actualizar la interfaz (RecyclerView) de inmediato
+                            adapter.setUsuarios(lista);
+
+                            // 3. Sincronización con la Base de Datos local (Room)
+                            dbExecutor.execute(() -> {
+                                try {
+                                    AppDatabase db = AppDatabase.getInstance(requireContext());
+
+                                    // Opcional: Limpiar usuarios antiguos para mantener la DB fresca
+                                    // db.usuarioDao().eliminarTodos();
+
+                                    for (Usuario u : lista) {
+                                        db.usuarioDao().insertarOActualizar(u);
+                                    }
+                                    Log.d(TAG, "Sincronización local exitosa: " + lista.size() + " registros.");
+                                } catch (Exception e) {
+                                    Log.e(TAG, "Error en persistencia local: " + e.getMessage());
+                                }
+                            });
+
+                        } else {
+                            // Manejo de errores de respuesta (403, 404, 500)
+                            Log.e(TAG, "Error del servidor al obtener slots. Código: " + response.code());
+                            Toast.makeText(getContext(), "Error del servidor: No se pudo obtener la lista de personal", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<List<Usuario>> call, @NonNull Throwable t) {
+                        if (isAdded()) {
+                            Log.e(TAG, "Fallo crítico de red en cargarSlots: " + t.getMessage());
+                            Toast.makeText(getContext(), "Sin conexión: Cargando perfiles locales...", Toast.LENGTH_LONG).show();
+
+                            // Opcional: Si falla la red, cargar los que ya están en la DB local
+                            cargarSlotsDesdeDBLocal();
+                        }
+                    }
+                });
+    }
+
+    /**
+     * Método de respaldo para que la tablet funcione sin internet
+     * si ya se había sincronizado antes.
+     */
+    private void cargarSlotsDesdeDBLocal() {
+        dbExecutor.execute(() -> {
+            List<Usuario> locales = AppDatabase.getInstance(requireContext()).usuarioDao().obtenerTodos();
+            if (getActivity() != null && !locales.isEmpty()) {
+                getActivity().runOnUiThread(() -> adapter.setUsuarios(locales));
+            }
+        });
+    }
+
+    private void procesarLoginConPin() {
+        if (usuarioSeleccionado == null) return;
+        String pin = etPin.getText().toString().trim();
+
+        // Obtenemos el ID de empresa que la tablet ya tiene guardado
+        long empresaId = sessionManager.getEmpresaId();
+
+        if (pin.isEmpty()) {
+            Toast.makeText(getContext(), "Digite su PIN", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Construimos el JSON con los 3 parámetros de seguridad
+        Map<String, Object> creds = new HashMap<>();
+        creds.put("usuarioId", usuarioSeleccionado.idUsuario);
+        creds.put("empresaId", empresaId); // <--- Nuevo parámetro de seguridad
+        creds.put("pin", pin);
+
+        RetrofitClient.getInterface(requireContext()).loginTablet(creds)
+                .enqueue(new Callback<Map<String, String>>() {
+                    @Override
+                    public void onResponse(Call<Map<String, String>> call, Response<Map<String, String>> response) {
+                        if (response.isSuccessful()) {
+                            sessionManager.guardarUsuario(usuarioSeleccionado);
+                            activarModoComandos(usuarioSeleccionado);
+                            if (listener != null) {
+                                listener.onLoginExitoso(usuarioSeleccionado);
+                            }
+                        } else {
+                            String errorMsg = "Acceso Denegado";
+                            try {
+                                // Esto lee el mensaje que enviamos desde el backend (ej: "Usuario bloqueado")
+                                if (response.errorBody() != null) {
+                                    errorMsg = response.errorBody().string();
+                                }
+                            } catch (IOException e) { e.printStackTrace(); }
+
+                            Toast.makeText(getContext(), errorMsg, Toast.LENGTH_LONG).show();
+                            etPin.setText("");
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<Map<String, String>> call, Throwable t) {
+                        Toast.makeText(getContext(), "Error de red: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                });
+    }
+
+    private void resetStateAfterError(String msg) {
+        Toast.makeText(getContext(), msg, Toast.LENGTH_LONG).show();
+        btnEscanearQR.setVisibility(View.VISIBLE);
+        cardCamera.setVisibility(View.GONE);
+        isScanning = false;
+    }
+
+    private void validarEstadoTerminal() {
+        if (!sessionManager.estaTerminalVinculada()) {
+            mostrarModoActivacion();
+            return;
+        }
+
+        // NO llamar a activarModoLogin() aquí todavía si queremos que sea 100% dinámico
+
+        RetrofitClient.getInterface(requireContext()).validarTerminal(androidId).enqueue(new Callback<Void>() {
+            @Override
+            public void onResponse(@NonNull Call<Void> call, @NonNull Response<Void> response) {
+                if (!isAdded()) return;
+
+                if (response.isSuccessful()) {
+                    // Si la validación es exitosa, ahora sí cargamos la interfaz
+                    activarModoLogin();
+
+                    Usuario user = sessionManager.obtenerUsuario();
+                    if (user != null) activarModoComandos(user);
+                } else {
+                    // Si el servidor la rechazó (ej: la borraste del panel administrativo)
+                    sessionManager.desvincularTerminalTotalmente();
+                    mostrarModoActivacion();
+                }
+            }
+
+            @Override
+            public void onFailure(@NonNull Call<Void> call, @NonNull Throwable t) {
+                if (!isAdded()) return;
+                // Modo offline: Solo si falla la red, usamos lo que tenemos en memoria
+                activarModoLogin();
+                Usuario user = sessionManager.obtenerUsuario();
+                if (user != null) activarModoComandos(user);
+            }
+        });
+    }
+
+    private void mostrarModoActivacion() {
+        layoutActivacion.setVisibility(View.VISIBLE);
+        layoutLogin.setVisibility(View.GONE);
+        layoutComandos.setVisibility(View.GONE);
+        cardCamera.setVisibility(View.GONE);
+        btnEscanearQR.setVisibility(View.VISIBLE);
+    }
+
+    private void activarModoLogin() {
+        layoutActivacion.setVisibility(View.GONE);
+        layoutLogin.setVisibility(View.VISIBLE);
+        layoutComandos.setVisibility(View.GONE);
+        if (tilPin != null) tilPin.setVisibility(View.GONE);
+        if (btnLogin != null) btnLogin.setVisibility(View.GONE);
+        cargarSlots();
+    }
+
     private void activarModoComandos(Usuario usuario) {
+        layoutActivacion.setVisibility(View.GONE);
         layoutLogin.setVisibility(View.GONE);
         layoutComandos.setVisibility(View.VISIBLE);
         tvUsuarioActivo.setText(usuario.nombreUsuario);
     }
 
-    private void activarModoLogin() {
-        layoutLogin.setVisibility(View.VISIBLE);
-        layoutComandos.setVisibility(View.GONE);
+    private void logoutConfirm() {
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Cerrar Sesión")
+                .setMessage("¿Deseas finalizar el turno?")
+                .setPositiveButton("Cerrar", (d, w) -> {
+                    sessionManager.borrarSesion();
+                    activarModoLogin();
+                    if (listener != null) listener.onLogout();
+                })
+                .setNegativeButton("Cancelar", null).show();
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        executorService.shutdown();
+        if (cameraExecutor != null) cameraExecutor.shutdown();
+        dbExecutor.shutdown();
+        if (qrScanner != null) qrScanner.close();
     }
 }
