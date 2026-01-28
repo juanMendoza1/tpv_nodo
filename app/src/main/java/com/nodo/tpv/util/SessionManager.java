@@ -24,6 +24,8 @@ public class SessionManager {
     private static final String KEY_USER_MESA = "user_mesa";
     private static final String KEY_USER_ACTIVO = "user_activo";
 
+    private static final String KEY_USER_LOGIN = "user_login";
+
     private final SharedPreferences prefs;
 
     public SessionManager(Context context) {
@@ -90,6 +92,7 @@ public class SessionManager {
         prefs.edit()
                 .putInt(KEY_USER_ID, usuario.idUsuario)
                 .putString(KEY_USER_NOMBRE, usuario.nombreUsuario)
+                .putString(KEY_USER_LOGIN, usuario.login)
                 .putString(KEY_USER_ROL, usuario.rolUsuario)
                 .putInt(KEY_USER_MESA, usuario.idMesa)
                 .putBoolean(KEY_USER_ACTIVO, true)
@@ -105,6 +108,7 @@ public class SessionManager {
         Usuario u = new Usuario();
         u.idUsuario = prefs.getInt(KEY_USER_ID, 0);
         u.nombreUsuario = prefs.getString(KEY_USER_NOMBRE, "Operador");
+        u.login = prefs.getString(KEY_USER_LOGIN, "");
         u.rolUsuario = prefs.getString(KEY_USER_ROL, "");
         u.idMesa = prefs.getInt(KEY_USER_MESA, 0);
         return u;
@@ -124,6 +128,7 @@ public class SessionManager {
         prefs.edit()
                 .remove(KEY_USER_ID)
                 .remove(KEY_USER_NOMBRE)
+                .remove(KEY_USER_LOGIN)
                 .remove(KEY_USER_ROL)
                 .remove(KEY_USER_MESA)
                 .remove(KEY_USER_ACTIVO)

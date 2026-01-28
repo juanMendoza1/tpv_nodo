@@ -21,6 +21,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
@@ -47,6 +48,7 @@ import com.google.mlkit.vision.common.InputImage;
 import com.nodo.tpv.R;
 import com.nodo.tpv.data.api.RetrofitClient;
 import com.nodo.tpv.data.database.AppDatabase;
+import com.nodo.tpv.data.dto.ProductoDTO;
 import com.nodo.tpv.data.entities.TerminalDispositivo;
 import com.nodo.tpv.data.entities.Usuario;
 import com.nodo.tpv.adapters.UsuarioSlotAdapter;
@@ -399,7 +401,7 @@ public class FragmentSesion extends Fragment {
         if (usuarioSeleccionado == null) return;
         String pin = etPin.getText().toString().trim();
 
-        // Obtenemos el ID de empresa que la tablet ya tiene guardado
+        // 1. Obtenemos el ID de empresa que la tablet ya tiene guardado
         long empresaId = sessionManager.getEmpresaId();
 
         if (pin.isEmpty()) {
@@ -407,10 +409,10 @@ public class FragmentSesion extends Fragment {
             return;
         }
 
-        // Construimos el JSON con los 3 parámetros de seguridad
+        // 2. Construimos el JSON con los parámetros de seguridad
         Map<String, Object> creds = new HashMap<>();
         creds.put("usuarioId", usuarioSeleccionado.idUsuario);
-        creds.put("empresaId", empresaId); // <--- Nuevo parámetro de seguridad
+        creds.put("empresaId", empresaId);
         creds.put("pin", pin);
 
         RetrofitClient.getInterface(requireContext()).loginTablet(creds)
@@ -418,15 +420,16 @@ public class FragmentSesion extends Fragment {
                     @Override
                     public void onResponse(Call<Map<String, String>> call, Response<Map<String, String>> response) {
                         if (response.isSuccessful()) {
+                            // 3. Guardamos el usuario en la sesión local
                             sessionManager.guardarUsuario(usuarioSeleccionado);
-                            activarModoComandos(usuarioSeleccionado);
-                            if (listener != null) {
-                                listener.onLoginExitoso(usuarioSeleccionado);
-                            }
+
+                            // 4. BLOQUE CRÍTICO: Antes de entrar, sincronizamos el catálogo real
+                            Log.d(TAG, "Login exitoso. Iniciando descarga de productos para empresa: " + empresaId);
+                            sincronizarCatalogo(empresaId);
+
                         } else {
                             String errorMsg = "Acceso Denegado";
                             try {
-                                // Esto lee el mensaje que enviamos desde el backend (ej: "Usuario bloqueado")
                                 if (response.errorBody() != null) {
                                     errorMsg = response.errorBody().string();
                                 }
@@ -531,4 +534,82 @@ public class FragmentSesion extends Fragment {
         dbExecutor.shutdown();
         if (qrScanner != null) qrScanner.close();
     }
+
+    // Dentro de FragmentSesion.java
+
+    private void sincronizarCatalogo(long empresaId) {
+        // Capturamos el contexto de la aplicación para evitar fugas de memoria en hilos de fondo
+        Context appContext = requireContext().getApplicationContext();
+
+        // 1. Mostrar diálogo de carga
+        MaterialAlertDialogBuilder loadingDialog = new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Sincronizando")
+                .setMessage("Descargando catálogo de productos...")
+                .setCancelable(false);
+        AlertDialog dialog = loadingDialog.show();
+
+        RetrofitClient.getInterface(appContext).obtenerProductosPorEmpresa(empresaId)
+                .enqueue(new Callback<List<ProductoDTO>>() {
+                    @Override
+                    public void onResponse(@NonNull Call<List<ProductoDTO>> call, @NonNull Response<List<ProductoDTO>> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+
+                            // 2. Persistir en Room (Hilo de fondo) para no bloquear la UI
+                            dbExecutor.execute(() -> {
+                                try {
+                                    AppDatabase db = AppDatabase.getInstance(appContext);
+                                    List<com.nodo.tpv.data.entities.Producto> entidades = new ArrayList<>();
+
+                                    for (ProductoDTO dto : response.body()) {
+                                        com.nodo.tpv.data.entities.Producto p = new com.nodo.tpv.data.entities.Producto();
+
+                                        // Mapeo exhaustivo
+                                        p.idProducto = dto.id.intValue();
+                                        p.nombreProducto = dto.nombre;
+                                        p.precioProducto = dto.precioVenta;
+                                        p.precioCosto = dto.precioCosto;
+                                        p.stockActual = (dto.stockActual != null) ? dto.stockActual : 0;
+                                        p.categoria = dto.categoriaNombre;
+
+                                        entidades.add(p);
+                                    }
+
+                                    // Actualización masiva en la DB local
+                                    db.productoDao().insertarOActualizar(entidades);
+
+                                    // 3. Regresar al hilo principal para navegar
+                                    if (getActivity() != null) {
+                                        getActivity().runOnUiThread(() -> {
+                                            if (dialog != null) dialog.dismiss();
+                                            activarModoComandos(usuarioSeleccionado); // Cambiar UI local del fragment
+
+                                            if (listener != null) {
+                                                listener.onLoginExitoso(usuarioSeleccionado); // Navegar al menú principal
+                                            }
+                                        });
+                                    }
+                                } catch (Exception e) {
+                                    Log.e("SYNC_ERR", "Error guardando productos: " + e.getMessage());
+                                }
+                            });
+                        } else {
+                            if (dialog != null) dialog.dismiss();
+                            Toast.makeText(getContext(), "Error: " + response.code(), Toast.LENGTH_SHORT).show();
+                            // Opcional: Permitir entrar aunque falle la sincronización si hay datos locales
+                            if (listener != null) listener.onLoginExitoso(usuarioSeleccionado);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<List<ProductoDTO>> call, @NonNull Throwable t) {
+                        if (dialog != null) dialog.dismiss();
+                        Log.e("API_ERR", "Fallo al descargar productos", t);
+                        Toast.makeText(getContext(), "Error de red: " + t.getMessage(), Toast.LENGTH_LONG).show();
+                        // Modo offline: Permitir entrar si ya existen datos
+                        if (listener != null) listener.onLoginExitoso(usuarioSeleccionado);
+                    }
+                });
+    }
+
+
 }

@@ -969,10 +969,18 @@ public class FragmentArenaDueloInd extends Fragment {
                     holder.btnConfirmar.setOnClickListener(v -> {
                         v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
 
-                        // Animación de salida antes de procesar
+                        // 1. Obtener la sesión actual para saber quién entrega
+                        com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(holder.itemView.getContext());
+                        com.nodo.tpv.data.entities.Usuario user = session.obtenerUsuario();
+
+                        // Datos reales (seguridad contra nulos)
+                        final int idOp = (user != null) ? user.idUsuario : 0;
+                        final String loginOp = (user != null) ? user.login : "anonimo";
+
+                        // 2. Animación de salida
                         holder.itemView.animate().alpha(0f).translationX(100f).setDuration(300).withEndAction(() -> {
-                            // ID 1 como admin por defecto
-                            productoViewModel.marcarComoEntregado(item.idDetalle, 1);
+                            // 3. Llamada corregida con (int idDetalle, int idUsuario, String loginOperativo)
+                            productoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
                         }).start();
                     });
                 }

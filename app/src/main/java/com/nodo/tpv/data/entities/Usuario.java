@@ -12,9 +12,9 @@ public class Usuario {
 
     @SerializedName("nombreCompleto")
     public String nombreUsuario;
-
-    @SerializedName("login")
     public String rolUsuario; // Podemos usar el login como identificador de rol o alias
 
     public int idMesa; // Este lo usaremos luego para la operativa
+
+    public String login;
 }

@@ -171,8 +171,18 @@ public class FragmentArenaDuelo extends Fragment {
         view.findViewById(R.id.btnVerPendientes).setOnClickListener(v -> toggleDespacho(true));
         view.findViewById(R.id.btnCerrarDespacho).setOnClickListener(v -> toggleDespacho(false));
         view.findViewById(R.id.btnEntregarTodoLateral).setOnClickListener(v -> {
-            productoViewModel.despacharTodoLaMesa(idMesaActual, 1);
+            // 1. Obtener datos del operario actual
+            com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(requireContext());
+            String loginOperativo = session.obtenerUsuario().login;
+            int idOperativo = session.obtenerUsuario().idUsuario;
+
+            // 2. Ejecutar despacho masivo
+            // Pasamos el login para el Backend y el ID para la DB local (Room)
+            productoViewModel.despacharTodoLaMesa(idMesaActual, idOperativo, loginOperativo);
+
+            // 3. UI Feedback
             toggleDespacho(false);
+            Toast.makeText(getContext(), "Despachando productos...", Toast.LENGTH_SHORT).show();
         });
 
         view.findViewById(R.id.btnHistorialDuelo).setOnClickListener(v -> toggleHistorial(true));
@@ -453,11 +463,26 @@ public class FragmentArenaDuelo extends Fragment {
 
     private void toggleDespacho(boolean mostrar) {
         if (despachoVisible == mostrar) return;
+
         if (mostrar) {
+            // 1. Obtener datos de sesión
+            com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(requireContext());
+            com.nodo.tpv.data.entities.Usuario user = session.obtenerUsuario();
+
+            // Extraemos los valores (con seguridad por si el usuario es null)
+            final int idOp = (user != null) ? user.idUsuario : 0;
+            final String loginOp = (user != null) ? user.login : "desconocido";
+
             productoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
                 if (lista != null) {
                     rvDespachoLateral.setLayoutManager(new LinearLayoutManager(getContext()));
-                    rvDespachoLateral.setAdapter(new LogBatallaAdapter(lista, item -> productoViewModel.marcarComoEntregado(item.idDetalle, 1)));
+
+                    // 2. Actualizar el click del adapter para usar los datos reales
+                    rvDespachoLateral.setAdapter(new LogBatallaAdapter(lista, item -> {
+                        // Llamamos a la función con el ID (int) y el Login (String)
+                        productoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
+                    }));
+
                     if (lista.isEmpty() && despachoVisible) toggleDespacho(false);
                 }
             });

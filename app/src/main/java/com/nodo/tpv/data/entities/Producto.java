@@ -11,10 +11,11 @@ import lombok.Data;
 @Entity(tableName = "producto")
 public class Producto {
 
-    @PrimaryKey(autoGenerate = true)
+    @PrimaryKey
     public int idProducto;
     public String nombreProducto;
     public BigDecimal precioProducto;
+    public BigDecimal precioCosto;
     public int stockActual;
     public String categoria;
     public String imagenUrl;

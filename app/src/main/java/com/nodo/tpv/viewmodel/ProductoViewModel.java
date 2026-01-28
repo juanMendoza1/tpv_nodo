@@ -13,10 +13,12 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Transformations;
 
+import com.nodo.tpv.data.api.RetrofitClient;
 import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.dto.DetalleConNombre;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.dto.LogAgrupadoDTO;
+import com.nodo.tpv.data.dto.ProductoDTO;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DetallePedido;
@@ -36,6 +38,10 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class ProductoViewModel extends AndroidViewModel {
     private final AppDatabase db;
@@ -869,26 +875,66 @@ public class ProductoViewModel extends AndroidViewModel {
         });
     }
 
-    public void marcarComoEntregado(int idDetalle, int idUsuarioAdmin) {
+    public void marcarComoEntregado(int idDetalle, int idUsuario, String loginOperativo) {
         executorService.execute(() -> {
-            // 1. Cambiar estado en DB
-            db.detallePedidoDao().despacharPedido(idDetalle, "ENTREGADO", idUsuarioAdmin);
+            // 1. OBTENER DATOS DEL PEDIDO
+            DetallePedido detalle = db.detallePedidoDao().obtenerDetallePorId(idDetalle);
+            if (detalle == null) return;
 
-            // 2. Disparar el gatillo para que las 3 funciones de arriba se refresquen
+            // 2. ACTUALIZACIÓN LOCAL INMEDIATA (Para que suba a la bolsita YA)
+            db.detallePedidoDao().despacharPedidoLocal(idDetalle, "ENTREGADO", idUsuario);
+
+            // Notificamos a la UI para que el marcador sume el valor de inmediato
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+
+            // 3. SINCRONIZACIÓN SILENCIOSA CON EL BACKEND
+            RetrofitClient.getInterface(getApplication()).reportarDespacho(
+                    (long) detalle.idProducto,
+                    detalle.cantidad,
+                    detalle.idDueloOrigen,
+                    loginOperativo
+            ).enqueue(new Callback<String>() {
+                @Override
+                public void onResponse(Call<String> call, Response<String> response) {
+                    if (response.isSuccessful()) {
+                        Log.d("SYNC", "Stock descontado en servidor para: " + detalle.getIdProducto());
+                    } else {
+                        // Si el servidor falla (ej: 403 o 500), podrías revertir o marcar para reintento
+                        Log.e("SYNC", "Error servidor: " + response.code());
+                    }
+                }
+                @Override
+                public void onFailure(Call<String> call, Throwable t) {
+                    Log.e("SYNC", "Fallo de red, el stock se sincronizará luego");
+                }
+            });
+        });
+    }
+
+    public void despacharTodoLaMesa(int idMesa, int idUsuario, String loginOperativo) {
+        executorService.execute(() -> {
+            List<DetallePedido> pendientes = db.detallePedidoDao().obtenerPendientesMesaSincrono(idMesa);
+            if (pendientes == null || pendientes.isEmpty()) return;
+
+            // Actualizamos todos los estados a ENTREGADO en un solo golpe local
+            for (DetallePedido dp : pendientes) {
+                db.detallePedidoDao().despacharPedidoLocal(dp.idDetalle, "ENTREGADO", idUsuario);
+
+                // Enviamos reporte al servidor (uno por uno en segundo plano)
+                reportarServidorSilencioso(dp, loginOperativo);
+            }
+
+            // Refrescamos la UI una sola vez al final del bucle local
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 
-    public void despacharTodoLaMesa(int idMesa, int idAdmin) {
-        executorService.execute(() -> {
-            // 1. Actualizamos todos los pendientes a entregado
-            db.detallePedidoDao().marcarTodoComoEntregadoMesa(idMesa, idAdmin);
-
-            // 2. Refrescamos la UI (Bolsa, Badge y Saldos)
-            mainThreadHandler.post(() -> {
-                dbTrigger.setValue(System.currentTimeMillis());
-                Log.d("LOGISTICA", "Mesa " + idMesa + " despachada totalmente.");
-            });
+    private void reportarServidorSilencioso(DetallePedido dp, String login) {
+        RetrofitClient.getInterface(getApplication()).reportarDespacho(
+                (long) dp.idProducto, dp.cantidad, dp.idDueloOrigen, login
+        ).enqueue(new Callback<String>() {
+            @Override public void onResponse(Call<String> c, Response<String> r) {}
+            @Override public void onFailure(Call<String> c, Throwable t) {}
         });
     }
 
@@ -1460,6 +1506,41 @@ public class ProductoViewModel extends AndroidViewModel {
                 dbTrigger.setValue(System.currentTimeMillis()); // Refresca la Arena
             });
         });
+    }
+
+    // En ProductoViewModel.java
+
+    public void refrescarStockSilencioso(long empresaId) {
+        // 1. No bloqueamos la UI con loadings.
+        // 2. Pedimos al API los datos frescos.
+        RetrofitClient.getInterface(getApplication()).obtenerProductosPorEmpresa(empresaId)
+                .enqueue(new Callback<List<ProductoDTO>>() {
+                    @Override
+                    public void onResponse(Call<List<ProductoDTO>> call, Response<List<ProductoDTO>> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            executorService.execute(() -> {
+                                // Actualizamos Room solo con los cambios
+                                for (ProductoDTO dto : response.body()) {
+                                    db.productoDao().actualizarStockYPrecio(
+                                            dto.id.intValue(),
+                                            dto.stockActual,
+                                            dto.precioVenta
+                                    );
+                                }
+                                // Disparamos el trigger para que el catálogo se refresque visualmente
+                                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+                            });
+                        }
+                    }
+                    @Override
+                    public void onFailure(Call<List<ProductoDTO>> call, Throwable t) {
+                        Log.e("SYNC", "Error silencioso: " + t.getMessage());
+                    }
+                });
+    }
+
+    public LiveData<List<Producto>> getProductosLiveData() {
+        return db.productoDao().obtenerTodosProductosLiveData();
     }
 
 }

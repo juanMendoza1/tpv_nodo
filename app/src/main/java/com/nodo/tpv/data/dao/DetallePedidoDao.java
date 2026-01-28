@@ -205,4 +205,17 @@ public interface DetallePedidoDao {
             "FROM detalle_pedido det INNER JOIN producto prod ON det.idProducto = prod.idProducto " +
             "WHERE det.idMesa = :idMesa AND det.estado = 'REGISTRADO' ORDER BY det.fechaLong DESC")
     List<DetalleHistorialDuelo> obtenerDeudaPorMesaIndSincrona(int idMesa);
+
+    @Query("SELECT * FROM detalle_pedido WHERE idDetalle = :id")
+    DetallePedido obtenerDetallePorId(int id);
+
+    // También uno para obtener todos los pendientes de una mesa si vas a "Despachar Todo"
+    @Query("SELECT * FROM detalle_pedido WHERE idMesa = :idMesa AND estado = 'PENDIENTE'")
+    List<DetallePedido> obtenerPendientesMesaSincrono(int idMesa);
+
+    @Query("UPDATE detalle_pedido SET estado = :nuevoEstado, idUsuarioEntrega = :idUsuario " +
+            "WHERE idDetalle = :idDetalle")
+    void despacharPedidoLocal(int idDetalle, String nuevoEstado, int idUsuario);
+
+
 }

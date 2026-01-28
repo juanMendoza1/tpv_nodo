@@ -67,7 +67,7 @@ public class CatalogoProductosFragment extends Fragment {
             idMesaActual = getArguments().getInt("id_mesa");
         }
 
-        // 1. Vincular Vistas
+        // --- 1. VINCULACIÓN DE VISTAS ---
         btnFinalizarSeleccion = view.findViewById(R.id.btnFinalizarSeleccion);
         cardResumenContable = view.findViewById(R.id.cardResumenContable);
         tvTotalResumen = view.findViewById(R.id.tvTotalResumen);
@@ -75,7 +75,7 @@ public class CatalogoProductosFragment extends Fragment {
         btnMinimizarResumen = view.findViewById(R.id.btnMinimizarResumen);
         RecyclerView rvResumen = view.findViewById(R.id.rvResumenApuesta);
 
-        // 2. Configurar Resumen (Lógica reactiva a la DB)
+        // --- 2. CONFIGURAR RESUMEN (Lógica reactiva a la DB) ---
         rvResumen.setLayoutManager(new LinearLayoutManager(getContext()));
         resumenAdapter = new ResumenContableAdapter(productoItem -> {
             // El idProducto aquí contiene el idDetalle de la DB. Cambiamos estado a CANCELADO.
@@ -84,57 +84,68 @@ public class CatalogoProductosFragment extends Fragment {
         });
         rvResumen.setAdapter(resumenAdapter);
 
-        // 3. Lógica Colapsable
+        // --- 3. LÓGICA COLAPSABLE ---
         btnMinimizarResumen.setOnClickListener(v -> toggleResumen((ViewGroup) view));
 
-        // 4. Observar PENDIENTES de la Mesa (Reemplaza la observación de listaApuesta)
+        // --- 4. OBSERVADOR DE PENDIENTES (BADGE DE BOLSA) ---
         if (idClienteSeleccionado == 0) {
             productoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), listaPendientes -> {
                 if (listaPendientes != null && !listaPendientes.isEmpty()) {
                     cardResumenContable.setVisibility(View.VISIBLE);
-
                     List<Producto> visuales = new ArrayList<>();
                     BigDecimal totalSuma = BigDecimal.ZERO;
 
                     for (DetalleHistorialDuelo d : listaPendientes) {
                         Producto p = new Producto();
-                        p.idProducto = d.idDetalle; // Referencia para poder cancelar
+                        p.idProducto = d.idDetalle;
                         p.setNombreProducto(d.nombreProducto);
                         p.setPrecioProducto(d.precioEnVenta);
                         visuales.add(p);
                         totalSuma = totalSuma.add(d.precioEnVenta);
                     }
-
                     resumenAdapter.updateList(visuales);
                     tvTotalResumen.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(totalSuma));
                 } else {
-                    // Si el admin entrega o se cancela, el card desaparece automáticamente
                     cardResumenContable.setVisibility(View.GONE);
                 }
             });
         }
 
-        // 5. Botón Limpiar Bolsa (Cambia estado de todos los pendientes a CANCELADO)
+        // --- 5. BOTÓN LIMPIAR BOLSA ---
         view.findViewById(R.id.btnLimpiarApuesta).setOnClickListener(v -> {
             productoViewModel.cancelarMunicionPendienteMesa(idMesaActual);
             Toast.makeText(getContext(), "Bolsa vaciada", Toast.LENGTH_SHORT).show();
         });
 
-        // 6. Botón Finalizar (Simplemente cierra, ya que los datos se guardan en cada diálogo)
+        // --- 6. BOTÓN FINALIZAR ---
         btnFinalizarSeleccion.setOnClickListener(v -> {
             requireActivity().getSupportFragmentManager().popBackStack();
         });
 
-        // 7. Catálogo Principal
+        // --- 7. CONFIGURACIÓN DEL CATÁLOGO PRINCIPAL (FLUJO REACTIVO) ---
         RecyclerView rvProductos = view.findViewById(R.id.rvProductos);
         rvProductos.setLayoutManager(new GridLayoutManager(getContext(), 3));
         ProductoAdapter adapter = new ProductoAdapter();
         rvProductos.setAdapter(adapter);
-
         adapter.setOnProductoClickListener(this::mostrarDialogoCantidad);
 
-        productoViewModel.getProductosResultados().observe(getViewLifecycleOwner(), adapter::setProductos);
-        productoViewModel.cargarTodosLosProductos();
+        // CAMBIO CLAVE: Observamos directamente el LiveData de Room.
+        // Cada vez que 'refrescarStockSilencioso' actualice la DB, esto se dispara solo.
+        productoViewModel.getProductosLiveData().observe(getViewLifecycleOwner(), lista -> {
+            if (lista != null) {
+                adapter.setProductos(lista);
+                // El adapter (actualizado previamente) se encarga de bloquear las cards con stock 0
+            }
+        });
+
+        // --- 8. SINCRONIZACIÓN HÍBRIDA ---
+        com.nodo.tpv.util.SessionManager sessionManager = new com.nodo.tpv.util.SessionManager(requireContext());
+        long empresaId = sessionManager.getEmpresaId();
+
+        if (empresaId > 0) {
+            // Disparamos la actualización desde el servidor en segundo plano
+            productoViewModel.refrescarStockSilencioso(empresaId);
+        }
     }
 
     private void toggleResumen(ViewGroup root) {

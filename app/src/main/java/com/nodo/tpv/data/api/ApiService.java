@@ -1,5 +1,6 @@
 package com.nodo.tpv.data.api;
 
+import com.nodo.tpv.data.dto.ProductoDTO;
 import com.nodo.tpv.data.entities.Usuario;
 import java.util.List;
 import java.util.Map;
@@ -8,6 +9,7 @@ import retrofit2.http.Body;
 import retrofit2.http.GET;
 import retrofit2.http.POST;
 import retrofit2.http.Path;
+import retrofit2.http.Query;
 
 public interface ApiService {
 
@@ -30,4 +32,15 @@ public interface ApiService {
     // Validar si la tablet sigue autorizada en el sistema
     @GET("api/terminales/validar/{uuid}")
     Call<Void> validarTerminal(@Path("uuid") String uuid);
+
+    @GET("api/productos/empresa/{empresaId}")
+    Call<List<ProductoDTO>> obtenerProductosPorEmpresa(@Path("empresaId") Long empresaId);
+
+    @POST("api/inventario/despacho-mesa")
+    Call<String> reportarDespacho(
+            @Query("productoId") Long productoId,
+            @Query("cantidad") Integer cantidad,
+            @Query("idDuelo") String idDuelo,
+            @Query("loginOperativo") String loginOperativo
+    );
 }
