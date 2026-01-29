@@ -33,4 +33,7 @@ public interface UsuarioDao {
 
     @Query("DELETE FROM usuario")
     void eliminarTodos();
+
+    @Query("SELECT * FROM usuario WHERE login = :login LIMIT 1")
+    Usuario obtenerUsuarioPorLoginSincrono(String login);
 }

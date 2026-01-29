@@ -1,64 +1,129 @@
 <com.google.android.material.card.MaterialCardView
+
     xmlns:android="http://schemas.android.com/apk/res/android"
+
     xmlns:app="http://schemas.android.com/apk/res-auto"
+
     android:id="@+id/cardSlot"
+
     android:layout_width="match_parent"
+
     android:layout_height="wrap_content"
-    android:layout_marginHorizontal="16dp"
-    android:layout_marginVertical="8dp"
+
+    android:layout_marginHorizontal="12dp"
+
+    android:layout_marginVertical="6dp"
+
     app:cardCornerRadius="16dp"
+
     app:cardElevation="2dp"
+
     app:rippleColor="?attr/colorPrimaryContainer"
+
     android:clickable="true"
+
+    app:strokeWidth="1dp"
+
     android:focusable="true">
 
+
+
     <LinearLayout
+
         android:layout_width="match_parent"
+
         android:layout_height="wrap_content"
+
         android:gravity="center_vertical"
+
         android:padding="16dp"
+
         android:orientation="horizontal">
 
+
+
         <com.google.android.material.imageview.ShapeableImageView
+
             android:id="@+id/ivAvatar"
+
             android:layout_width="48dp"
+
             android:layout_height="48dp"
+
             android:background="?attr/colorPrimaryContainer"
+
             android:padding="8dp"
+
             app:srcCompat="@drawable/ic_user_profile"
+
             app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Full" />
 
+
+
         <LinearLayout
+
             android:layout_width="0dp"
+
             android:layout_height="wrap_content"
+
             android:layout_weight="1"
+
             android:layout_marginStart="16dp"
+
             android:orientation="vertical">
 
+
+
             <TextView
+
                 android:id="@+id/tvNombreSlot"
+
                 android:layout_width="wrap_content"
+
                 android:layout_height="wrap_content"
+
                 android:text="NOMBRE DEL MESERO"
+
                 android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+
                 android:textStyle="bold" />
 
+
+
             <TextView
+
                 android:id="@+id/tvRol"
+
                 android:layout_width="wrap_content"
+
                 android:layout_height="wrap_content"
+
                 android:text="Capitán de Meseros"
+
                 android:textAllCaps="true"
+
                 android:letterSpacing="0.05"
+
                 android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+
                 android:textColor="?attr/colorPrimary" />
+
         </LinearLayout>
 
+
+
         <ImageView
+
             android:layout_width="24dp"
+
             android:layout_height="24dp"
+
             app:srcCompat="@drawable/ic_chevron_right"
+
             app:tint="?attr/colorOutline" />
 
+
+
     </LinearLayout>
+
 </com.google.android.material.card.MaterialCardView>

@@ -22,17 +22,20 @@ import com.nodo.tpv.data.dao.PerfilDueloIndDao;
 import com.nodo.tpv.data.dao.ProductoDao;
 import com.nodo.tpv.data.dao.TipoClienteDao;
 import com.nodo.tpv.data.dao.UsuarioDao;
+import com.nodo.tpv.data.dao.UsuarioSlotDao;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DetallePedido;
 import com.nodo.tpv.data.entities.DueloTemporal;
 import com.nodo.tpv.data.entities.DueloTemporalInd;
+import com.nodo.tpv.data.entities.LogSesion;
 import com.nodo.tpv.data.entities.Mesa;
 import com.nodo.tpv.data.entities.PerfilDuelo;
 import com.nodo.tpv.data.entities.PerfilDueloInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.entities.TipoCliente;
 import com.nodo.tpv.data.entities.Usuario;
+import com.nodo.tpv.data.entities.UsuarioSlot;
 import com.nodo.tpv.data.entities.VentaDetalleHistorial;
 import com.nodo.tpv.data.entities.VentaHistorial;
 
@@ -55,7 +58,9 @@ import java.util.concurrent.Executors;
                 DueloTemporalInd.class,
                 PerfilDuelo.class,
                 PerfilDueloInd.class,
-                DetalleDueloTemporalInd.class
+                DetalleDueloTemporalInd.class,
+                UsuarioSlot.class,
+                LogSesion.class
         },
         version = 1,
         exportSchema = false
@@ -78,8 +83,7 @@ public abstract class AppDatabase extends RoomDatabase {
 
     public abstract DetalleDueloTemporalIndDao detalleDueloTemporalIndDao();
 
-
-
+    public abstract UsuarioSlotDao usuarioSlotDao();
 
     public static synchronized AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {

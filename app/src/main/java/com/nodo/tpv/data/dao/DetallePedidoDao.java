@@ -218,4 +218,11 @@ public interface DetallePedidoDao {
     void despacharPedidoLocal(int idDetalle, String nuevoEstado, int idUsuario);
 
 
+    @Query("SELECT * FROM detalle_pedido WHERE (estado = 'ENTREGADO' OR estado = 'REGISTRADO') AND sincronizado = 0")
+    List<DetallePedido> obtenerDespachosPendientesSincronizar();
+
+    @Query("UPDATE detalle_pedido SET sincronizado = 1 WHERE idDetalle = :id")
+    void marcarComoSincronizado(int id);
+
+
 }

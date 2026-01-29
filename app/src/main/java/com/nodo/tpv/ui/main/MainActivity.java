@@ -214,7 +214,7 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
                 panelDerecho.setAlpha(1.0f);
 
                 // Decidimos el porcentaje según si hay un usuario logueado
-                float porcentaje = (sessionManager.obtenerUsuario() != null) ? 0.7f : 0.5f;
+                float porcentaje = (sessionManager.obtenerUsuario() != null) ? 0.7f : 0.4f;
 
                 // MOVER EL GUIDELINE DINÁMICAMENTE
                 set.setGuidelinePercent(R.id.guideline, porcentaje);

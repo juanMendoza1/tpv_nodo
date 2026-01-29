@@ -17,4 +17,6 @@ public class Usuario {
     public int idMesa; // Este lo usaremos luego para la operativa
 
     public String login;
+
+    public String passwordHash;
 }

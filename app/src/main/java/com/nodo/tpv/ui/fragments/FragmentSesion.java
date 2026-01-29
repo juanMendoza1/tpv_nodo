@@ -30,6 +30,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -53,6 +54,7 @@ import com.nodo.tpv.data.entities.TerminalDispositivo;
 import com.nodo.tpv.data.entities.Usuario;
 import com.nodo.tpv.adapters.UsuarioSlotAdapter;
 import com.nodo.tpv.util.SessionManager;
+import com.nodo.tpv.viewmodel.UsuarioSlotViewModel;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -91,6 +93,11 @@ public class FragmentSesion extends Fragment {
     private ProcessCameraProvider cameraProvider;
     private BarcodeScanner qrScanner;
 
+    private UsuarioSlotViewModel usuarioSlotViewModel;
+    private int slotIdActual = 1;
+
+    private CircularProgressIndicator loadingSlots;
+
     public interface OnSesionListener {
         void onLoginExitoso(Usuario usuario);
         void onLogout();
@@ -114,10 +121,15 @@ public class FragmentSesion extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // Inicialización de utilidades y ViewModels
         sessionManager = new SessionManager(requireContext());
         cameraExecutor = Executors.newSingleThreadExecutor();
 
-        // 1. Vincular Vistas (Asegúrate que los IDs existen en fragment_sesion.xml)
+        // NUEVO: Inicializar el UsuarioSlotViewModel
+        usuarioSlotViewModel = new ViewModelProvider(this).get(UsuarioSlotViewModel.class);
+
+        // 1. Vincular Vistas
         layoutActivacion = view.findViewById(R.id.layoutActivacion);
         layoutLogin = view.findViewById(R.id.layoutLogin);
         layoutComandos = view.findViewById(R.id.layoutComandos);
@@ -131,9 +143,9 @@ public class FragmentSesion extends Fragment {
         btnLogin = view.findViewById(R.id.btnLogin);
         btnSalir = view.findViewById(R.id.btnCerrarSesion);
         btnEscanearQR = view.findViewById(R.id.btnEscanearQR);
+        rvSlots = view.findViewById(R.id.rvSlots);
 
         // 2. Configurar RecyclerView de Slots
-        rvSlots = view.findViewById(R.id.rvSlots);
         if (rvSlots != null) {
             rvSlots.setLayoutManager(new LinearLayoutManager(getContext()));
             adapter = new UsuarioSlotAdapter(usuario -> {
@@ -141,6 +153,7 @@ public class FragmentSesion extends Fragment {
                 Log.d(TAG, "Usuario seleccionado: " + usuario.nombreUsuario);
                 if (tilPin != null) tilPin.setVisibility(View.VISIBLE);
                 if (btnLogin != null) btnLogin.setVisibility(View.VISIBLE);
+                etPin.setText(""); // Limpiar PIN previo
                 etPin.requestFocus();
             });
             rvSlots.setAdapter(adapter);
@@ -148,17 +161,68 @@ public class FragmentSesion extends Fragment {
 
         androidId = Settings.Secure.getString(requireContext().getContentResolver(), Settings.Secure.ANDROID_ID);
 
+        loadingSlots = view.findViewById(R.id.loadingSlots);
         // 3. Scanner Setup
         BarcodeScannerOptions options = new BarcodeScannerOptions.Builder()
                 .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
                 .build();
         qrScanner = BarcodeScanning.getClient(options);
 
+        // 4. NUEVO: Observadores del ViewModel para Login Offline/Online
+        configurarObservadoresViewModel();
+
         validarEstadoTerminal();
 
+        // 5. Listeners de Botones
         btnEscanearQR.setOnClickListener(v -> checkCameraPermission());
-        btnLogin.setOnClickListener(v -> procesarLoginConPin());
+
+        btnLogin.setOnClickListener(v -> {
+            String pin = etPin.getText().toString();
+            if (usuarioSeleccionado != null && !pin.isEmpty()) {
+                // Se asume slotIdActual = 1 o el que maneje tu lógica de UI
+                int slotId = 1;
+                // Llamamos a la lógica híbrida del ViewModel
+                usuarioSlotViewModel.loginOperario(slotId, usuarioSeleccionado.login, pin);
+            } else {
+                Toast.makeText(getContext(), "Seleccione un usuario e ingrese el PIN", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         btnSalir.setOnClickListener(v -> logoutConfirm());
+    }
+
+    /**
+     * NUEVO: Configura la escucha de eventos del UsuarioSlotViewModel
+     */
+    // En FragmentSesion.java
+
+    private void configurarObservadoresViewModel() {
+        usuarioSlotViewModel.getMensajeError().observe(getViewLifecycleOwner(), error -> {
+            if (error != null) {
+                Toast.makeText(getContext(), error, Toast.LENGTH_LONG).show();
+            }
+        });
+
+        usuarioSlotViewModel.getOperacionExitosa().observe(getViewLifecycleOwner(), exito -> {
+            if (exito != null && exito) {
+                // 1. Informar al sistema que la sesión es válida
+                if (usuarioSeleccionado != null) {
+                    // Sincronizamos con el SessionManager para mantener compatibilidad
+                    sessionManager.guardarUsuario(usuarioSeleccionado);
+
+                    // 2. DISPARAR TU LÓGICA ORIGINAL
+                    // Esto llamará a onLoginExitoso en MainActivity
+                    if (listener != null) {
+                        listener.onLoginExitoso(usuarioSeleccionado);
+                    }
+
+                    // 3. Limpiar estado visual
+                    etPin.setText("");
+                    if (tilPin != null) tilPin.setVisibility(View.GONE);
+                    if (btnLogin != null) btnLogin.setVisibility(View.GONE);
+                }
+            }
+        });
     }
 
     private void checkCameraPermission() {
@@ -323,76 +387,59 @@ public class FragmentSesion extends Fragment {
     }
 
     private void cargarSlots() {
-        // 1. Obtener el ID de forma dinámica desde el SessionManager
         long empresaId = sessionManager.getEmpresaId();
+        if (empresaId <= 0) return;
 
-        // Validación de seguridad: Si no hay ID, no intentamos la petición
-        if (empresaId <= 0) {
-            Log.e(TAG, "No se puede cargar slots: empresaId no válido (" + empresaId + ")");
-            return;
-        }
-
-        Log.d(TAG, "Solicitando slots al servidor para empresa ID: " + empresaId);
+        // 🔥 1. ACTIVAR LOADING ANTES DE LA PETICIÓN
+        if (rvSlots != null) rvSlots.setVisibility(View.GONE);
+        if (loadingSlots != null) loadingSlots.setVisibility(View.VISIBLE);
 
         RetrofitClient.getInterface(requireContext()).obtenerUsuariosPorEmpresa(empresaId)
                 .enqueue(new Callback<List<Usuario>>() {
                     @Override
                     public void onResponse(@NonNull Call<List<Usuario>> call, @NonNull Response<List<Usuario>> response) {
-                        if (!isAdded()) return; // Evitar crashes si el usuario cerró el fragment
+                        if (!isAdded()) return;
+
+                        // 🔥 2. OCULTAR AL RECIBIR RESPUESTA (ÉXITO)
+                        if (loadingSlots != null) loadingSlots.setVisibility(View.GONE);
+                        if (rvSlots != null) rvSlots.setVisibility(View.VISIBLE);
 
                         if (response.isSuccessful() && response.body() != null) {
-                            List<Usuario> lista = response.body();
-                            Log.d(TAG, "Conexión exitosa. Usuarios recibidos: " + lista.size());
-
-                            // 2. Actualizar la interfaz (RecyclerView) de inmediato
-                            adapter.setUsuarios(lista);
-
-                            // 3. Sincronización con la Base de Datos local (Room)
-                            dbExecutor.execute(() -> {
-                                try {
-                                    AppDatabase db = AppDatabase.getInstance(requireContext());
-
-                                    // Opcional: Limpiar usuarios antiguos para mantener la DB fresca
-                                    // db.usuarioDao().eliminarTodos();
-
-                                    for (Usuario u : lista) {
-                                        db.usuarioDao().insertarOActualizar(u);
-                                    }
-                                    Log.d(TAG, "Sincronización local exitosa: " + lista.size() + " registros.");
-                                } catch (Exception e) {
-                                    Log.e(TAG, "Error en persistencia local: " + e.getMessage());
-                                }
-                            });
-
+                            adapter.setUsuarios(response.body());
+                            // ... guardar en Room
                         } else {
-                            // Manejo de errores de respuesta (403, 404, 500)
-                            Log.e(TAG, "Error del servidor al obtener slots. Código: " + response.code());
-                            Toast.makeText(getContext(), "Error del servidor: No se pudo obtener la lista de personal", Toast.LENGTH_SHORT).show();
+                            cargarSlotsDesdeDBLocal();
                         }
                     }
 
                     @Override
                     public void onFailure(@NonNull Call<List<Usuario>> call, @NonNull Throwable t) {
-                        if (isAdded()) {
-                            Log.e(TAG, "Fallo crítico de red en cargarSlots: " + t.getMessage());
-                            Toast.makeText(getContext(), "Sin conexión: Cargando perfiles locales...", Toast.LENGTH_LONG).show();
+                        if (!isAdded()) return;
 
-                            // Opcional: Si falla la red, cargar los que ya están en la DB local
-                            cargarSlotsDesdeDBLocal();
-                        }
+                        // 🔥 3. OCULTAR AL RECIBIR FALLO (ERROR DE RED)
+                        if (loadingSlots != null) loadingSlots.setVisibility(View.GONE);
+                        if (rvSlots != null) rvSlots.setVisibility(View.VISIBLE);
+
+                        Toast.makeText(getContext(), "Error de red: Cargando perfiles locales", Toast.LENGTH_SHORT).show();
+                        cargarSlotsDesdeDBLocal();
                     }
                 });
     }
 
-    /**
-     * Método de respaldo para que la tablet funcione sin internet
-     * si ya se había sincronizado antes.
-     */
     private void cargarSlotsDesdeDBLocal() {
         dbExecutor.execute(() -> {
             List<Usuario> locales = AppDatabase.getInstance(requireContext()).usuarioDao().obtenerTodos();
-            if (getActivity() != null && !locales.isEmpty()) {
-                getActivity().runOnUiThread(() -> adapter.setUsuarios(locales));
+            if (getActivity() != null) {
+                getActivity().runOnUiThread(() -> {
+                    // 🔥 3. Aseguramos que la lista se vea tras la carga local
+                    if (rvSlots != null) rvSlots.setVisibility(View.VISIBLE);
+
+                    if (locales.isEmpty()) {
+                        Toast.makeText(getContext(), "No hay operarios locales. Se requiere internet.", Toast.LENGTH_LONG).show();
+                    } else {
+                        adapter.setUsuarios(locales);
+                    }
+                });
             }
         });
     }
@@ -611,5 +658,10 @@ public class FragmentSesion extends Fragment {
                 });
     }
 
+
+    private void ejecutarCierreSesion() {
+        // Esto liberará el slot en Room y creará el Log de auditoría
+        usuarioSlotViewModel.logoutOperario(slotIdActual);
+    }
 
 }

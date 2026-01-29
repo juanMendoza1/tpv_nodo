@@ -1,186 +1,375 @@
 <?xml version="1.0" encoding="utf-8"?>
+
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+
     xmlns:app="http://schemas.android.com/apk/res-auto"
+
     android:layout_width="match_parent"
+
     android:layout_height="match_parent"
+
     android:background="#F5F7FA">
 
+
+
     <ScrollView
+
         android:layout_width="match_parent"
+
         android:layout_height="match_parent"
+
         android:fillViewport="true">
 
+
+
         <LinearLayout
+
             android:layout_width="match_parent"
+
             android:layout_height="wrap_content"
+
             android:gravity="center"
+
             android:orientation="vertical"
+
             android:padding="24dp">
 
+
+
             <com.google.android.material.card.MaterialCardView
+
                 android:layout_width="match_parent"
+
                 android:layout_height="wrap_content"
+
                 android:layout_margin="8dp"
+
                 app:cardBackgroundColor="@color/white"
+
                 app:cardCornerRadius="24dp"
+
                 app:cardElevation="12dp">
 
+
+
                 <LinearLayout
+
                     android:layout_width="match_parent"
+
                     android:layout_height="wrap_content"
+
                     android:orientation="vertical"
+
                     android:padding="32dp">
 
+
+
                     <ImageView
-                        android:layout_width="32dp"
-                        android:layout_height="32dp"
+
+                        android:layout_width="16dp"
+
+                        android:layout_height="16dp"
+
                         android:layout_gravity="center"
+
                         android:src="@drawable/ic_table_bar"
+
                         app:tint="#2E7D32" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="5dp"
-                        android:text="SISTEMA NODO"
-                        android:textAlignment="center"
-                        android:textColor="#37474F"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
-
                     <LinearLayout
+
                         android:id="@+id/layoutActivacion"
+
                         android:layout_width="match_parent"
+
                         android:layout_height="wrap_content"
+
                         android:orientation="vertical"
+
                         android:visibility="gone">
 
+
+
                         <TextView
+
                             android:layout_width="match_parent"
+
                             android:layout_height="wrap_content"
+
                             android:layout_marginTop="12dp"
+
                             android:text="Terminal no vinculada.\nEscanea el QR de activación."
+
                             android:textAlignment="center"
+
                             android:textColor="#78909C" />
 
+
+
                         <com.google.android.material.card.MaterialCardView
+
                             android:id="@+id/cardCamera"
+
                             android:layout_width="match_parent"
+
                             android:layout_height="250dp"
+
                             android:layout_marginTop="20dp"
+
                             android:visibility="gone"
+
                             app:cardCornerRadius="16dp"
+
                             app:strokeColor="#E0E0E0"
+
                             app:strokeWidth="1dp">
 
+
+
                             <FrameLayout
+
                                 android:layout_width="match_parent"
+
                                 android:layout_height="match_parent">
 
+
+
                                 <androidx.camera.view.PreviewView
+
                                     android:id="@+id/previewView"
+
                                     android:layout_width="match_parent"
+
                                     android:layout_height="match_parent"
+
                                     app:scaleType="fillCenter" />
 
+
+
                                 <com.google.android.material.progressindicator.CircularProgressIndicator
+
                                     android:id="@+id/loadingScanner"
+
                                     android:layout_width="wrap_content"
+
                                     android:layout_height="wrap_content"
+
                                     android:layout_gravity="center"
+
                                     android:indeterminate="true"
+
                                     android:visibility="gone"
+
                                     app:indicatorColor="#2E7D32" />
+
                             </FrameLayout>
+
                         </com.google.android.material.card.MaterialCardView>
 
+
+
                         <com.google.android.material.button.MaterialButton
+
                             android:id="@+id/btnEscanearQR"
+
                             android:layout_width="match_parent"
+
                             android:layout_height="60dp"
+
                             android:layout_marginTop="32dp"
+
                             android:backgroundTint="#2E7D32"
+
                             android:text="ESCANEAR QR"
+
                             app:cornerRadius="16dp"
+
                             app:icon="@drawable/ic_qr_code" />
+
                     </LinearLayout>
 
+
+
                     <LinearLayout
+
                         android:id="@+id/layoutLogin"
+
                         android:layout_width="match_parent"
+
                         android:layout_height="wrap_content"
+
                         android:orientation="vertical"
+
                         android:visibility="visible">
 
 
-                        <androidx.recyclerview.widget.RecyclerView
-                            android:id="@+id/rvSlots"
+
+                        <FrameLayout
+
                             android:layout_width="match_parent"
+
                             android:layout_height="280dp"
-                            android:layout_marginTop="12dp"
-                            android:background="#FAFAFA"
-                            android:padding="4dp" />
+
+                            android:layout_marginTop="2dp">
+
+
+
+                            <androidx.recyclerview.widget.RecyclerView
+
+                                android:id="@+id/rvSlots"
+
+                                android:layout_width="match_parent"
+
+                                android:layout_height="match_parent"
+
+                                android:background="#FAFAFA"
+
+                                android:padding="4dp" />
+
+
+
+                            <com.google.android.material.progressindicator.CircularProgressIndicator
+
+                                android:id="@+id/loadingSlots"
+
+                                android:layout_width="wrap_content"
+
+                                android:layout_height="wrap_content"
+
+                                android:layout_gravity="center"
+
+                                android:indeterminate="true"
+
+                                android:visibility="gone"
+
+                                app:indicatorColor="#2E7D32" />
+
+                        </FrameLayout>
+
+
 
                         <com.google.android.material.textfield.TextInputLayout
+
                             android:id="@+id/tilPin"
+
                             style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+
                             android:layout_width="match_parent"
+
                             android:layout_height="wrap_content"
+
                             android:layout_marginTop="16dp"
+
                             android:hint="Ingrese su PIN"
+
                             android:visibility="gone"
+
                             app:passwordToggleEnabled="true">
 
+
+
                             <com.google.android.material.textfield.TextInputEditText
+
                                 android:id="@+id/etPinLogin"
+
                                 android:layout_width="match_parent"
+
                                 android:layout_height="wrap_content"
+
                                 android:gravity="center"
+
                                 android:inputType="numberPassword"
+
                                 android:letterSpacing="0.3"
+
                                 android:maxLength="6"
+
                                 android:textSize="20sp" />
+
                         </com.google.android.material.textfield.TextInputLayout>
 
+
+
                         <com.google.android.material.button.MaterialButton
+
                             android:id="@+id/btnLogin"
+
                             android:layout_width="match_parent"
+
                             android:layout_height="60dp"
+
                             android:layout_marginTop="20dp"
+
                             android:backgroundTint="#2E7D32"
+
                             android:text="ENTRAR"
+
                             android:visibility="gone"
+
                             app:cornerRadius="16dp" />
+
                     </LinearLayout>
+
+
 
                     <LinearLayout
+
                         android:id="@+id/layoutComandos"
+
                         android:layout_width="match_parent"
+
                         android:layout_height="wrap_content"
+
                         android:orientation="vertical"
+
                         android:visibility="gone">
 
+
+
                         <TextView
+
                             android:id="@+id/tvUsuarioActivo"
+
                             android:layout_width="match_parent"
+
                             android:layout_height="wrap_content"
+
                             android:textAlignment="center"
+
                             android:textColor="#2E7D32"
+
                             android:textSize="22sp"
+
                             android:textStyle="bold" />
 
+
+
                         <com.google.android.material.button.MaterialButton
+
                             android:id="@+id/btnCerrarSesion"
+
                             style="@style/Widget.MaterialComponents.Button.TextButton"
+
                             android:layout_width="match_parent"
+
                             android:layout_height="wrap_content"
+
                             android:layout_marginTop="16dp"
+
                             android:text="CERRAR TURNO"
+
                             android:textColor="#D32F2F" />
+
                     </LinearLayout>
 
+
+
                 </LinearLayout>
+
             </com.google.android.material.card.MaterialCardView>
+
         </LinearLayout>
+
     </ScrollView>
+
 </FrameLayout>

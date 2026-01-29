@@ -12,6 +12,10 @@ import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Transformations;
+import androidx.work.Constraints;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
 import com.nodo.tpv.data.api.RetrofitClient;
 import com.nodo.tpv.data.database.AppDatabase;
@@ -28,6 +32,7 @@ import com.nodo.tpv.data.entities.PerfilDueloInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.entities.VentaDetalleHistorial;
 import com.nodo.tpv.data.entities.VentaHistorial;
+import com.nodo.tpv.data.sync.StockSyncWorker;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -877,38 +882,26 @@ public class ProductoViewModel extends AndroidViewModel {
 
     public void marcarComoEntregado(int idDetalle, int idUsuario, String loginOperativo) {
         executorService.execute(() -> {
-            // 1. OBTENER DATOS DEL PEDIDO
-            DetallePedido detalle = db.detallePedidoDao().obtenerDetallePorId(idDetalle);
-            if (detalle == null) return;
-
-            // 2. ACTUALIZACIÓN LOCAL INMEDIATA (Para que suba a la bolsita YA)
+            // 1. Marcamos localmente como ENTREGADO (sincronizado sigue en 0 por defecto)
             db.detallePedidoDao().despacharPedidoLocal(idDetalle, "ENTREGADO", idUsuario);
 
-            // Notificamos a la UI para que el marcador sume el valor de inmediato
-            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+            // 2. Encolamos el Worker para que revise todo lo que tenga sincronizado = 0
+            dispararSincronizacion();
 
-            // 3. SINCRONIZACIÓN SILENCIOSA CON EL BACKEND
-            RetrofitClient.getInterface(getApplication()).reportarDespacho(
-                    (long) detalle.idProducto,
-                    detalle.cantidad,
-                    detalle.idDueloOrigen,
-                    loginOperativo
-            ).enqueue(new Callback<String>() {
-                @Override
-                public void onResponse(Call<String> call, Response<String> response) {
-                    if (response.isSuccessful()) {
-                        Log.d("SYNC", "Stock descontado en servidor para: " + detalle.getIdProducto());
-                    } else {
-                        // Si el servidor falla (ej: 403 o 500), podrías revertir o marcar para reintento
-                        Log.e("SYNC", "Error servidor: " + response.code());
-                    }
-                }
-                @Override
-                public void onFailure(Call<String> call, Throwable t) {
-                    Log.e("SYNC", "Fallo de red, el stock se sincronizará luego");
-                }
-            });
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
+    }
+
+    private void dispararSincronizacion() {
+        Constraints restricciones = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(StockSyncWorker.class)
+                .setConstraints(restricciones)
+                .build();
+
+        WorkManager.getInstance(getApplication()).enqueue(syncRequest);
     }
 
     public void despacharTodoLaMesa(int idMesa, int idUsuario, String loginOperativo) {
@@ -916,25 +909,19 @@ public class ProductoViewModel extends AndroidViewModel {
             List<DetallePedido> pendientes = db.detallePedidoDao().obtenerPendientesMesaSincrono(idMesa);
             if (pendientes == null || pendientes.isEmpty()) return;
 
-            // Actualizamos todos los estados a ENTREGADO en un solo golpe local
+            // Actualizamos todos localmente
             for (DetallePedido dp : pendientes) {
                 db.detallePedidoDao().despacharPedidoLocal(dp.idDetalle, "ENTREGADO", idUsuario);
-
-                // Enviamos reporte al servidor (uno por uno en segundo plano)
-                reportarServidorSilencioso(dp, loginOperativo);
             }
 
-            // Refrescamos la UI una sola vez al final del bucle local
-            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
-        });
-    }
+            // Un solo Worker se encargará de buscar todos los registros con 'sincronizado = 0'
+            OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(StockSyncWorker.class)
+                    .setConstraints(new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .build();
 
-    private void reportarServidorSilencioso(DetallePedido dp, String login) {
-        RetrofitClient.getInterface(getApplication()).reportarDespacho(
-                (long) dp.idProducto, dp.cantidad, dp.idDueloOrigen, login
-        ).enqueue(new Callback<String>() {
-            @Override public void onResponse(Call<String> c, Response<String> r) {}
-            @Override public void onFailure(Call<String> c, Throwable t) {}
+            WorkManager.getInstance(getApplication()).enqueue(syncRequest);
+
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 

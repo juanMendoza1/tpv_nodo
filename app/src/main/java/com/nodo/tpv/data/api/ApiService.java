@@ -4,6 +4,8 @@ import com.nodo.tpv.data.dto.ProductoDTO;
 import com.nodo.tpv.data.entities.Usuario;
 import java.util.List;
 import java.util.Map;
+
+import okhttp3.ResponseBody;
 import retrofit2.Call;
 import retrofit2.http.Body;
 import retrofit2.http.GET;
@@ -37,10 +39,18 @@ public interface ApiService {
     Call<List<ProductoDTO>> obtenerProductosPorEmpresa(@Path("empresaId") Long empresaId);
 
     @POST("api/inventario/despacho-mesa")
-    Call<String> reportarDespacho(
+    Call<okhttp3.ResponseBody> reportarDespacho(
             @Query("productoId") Long productoId,
             @Query("cantidad") Integer cantidad,
             @Query("idDuelo") String idDuelo,
             @Query("loginOperativo") String loginOperativo
+    );
+
+    @POST("api/usuarios/log-sesion")
+    Call<ResponseBody> reportarEventoSesion(
+            @Query("idUsuario") int idUsuario,
+            @Query("slot") int slot,
+            @Query("tipo") String tipo,
+            @Query("fecha") long fecha
     );
 }

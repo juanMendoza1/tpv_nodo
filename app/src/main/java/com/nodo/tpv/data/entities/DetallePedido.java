@@ -33,4 +33,6 @@ public class DetallePedido {
      */
     public int idUsuarioEntrega;
 
+    public int sincronizado = 0;
+
 }
