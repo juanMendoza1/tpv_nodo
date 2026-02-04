@@ -30,4 +30,7 @@ public interface UsuarioSlotDao {
 
     @Query("UPDATE log_sesion SET sincronizado = 1 WHERE idLog = :id")
     void marcarLogSincronizado(int id);
+
+    @Query("UPDATE log_sesion SET sincronizado = -1 WHERE idLog = :id")
+    void marcarLogComoErrorCritico(int id);
 }

@@ -225,4 +225,7 @@ public interface DetallePedidoDao {
     void marcarComoSincronizado(int id);
 
 
+    @Query("UPDATE detalle_pedido SET sincronizado = -1 WHERE idDetalle = :idDetalle")
+    void marcarComoErrorCritico(int idDetalle);
+
 }

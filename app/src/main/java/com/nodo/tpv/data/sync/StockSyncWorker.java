@@ -21,18 +21,14 @@ public class StockSyncWorker extends Worker {
     @Override
     public Result doWork() {
         AppDatabase db = AppDatabase.getInstance(getApplicationContext());
-
-        // 1. Obtener registros locales no sincronizados
         List<DetallePedido> pendientes = db.detallePedidoDao().obtenerDespachosPendientesSincronizar();
 
         if (pendientes.isEmpty()) return Result.success();
 
-        boolean huboError = false;
+        boolean huboErrorDeRed = false;
 
         for (DetallePedido dp : pendientes) {
             try {
-                // 2. Ejecutar petición
-                // Nota: Asegúrate de que los nombres de los parámetros coincidan con tu backend
                 Response<okhttp3.ResponseBody> response = RetrofitClient.getInterface(getApplicationContext())
                         .reportarDespacho(
                                 (long) dp.idProducto,
@@ -42,21 +38,28 @@ public class StockSyncWorker extends Worker {
                         ).execute();
 
                 if (response.isSuccessful()) {
-                    // 3. Si el servidor responde 200 OK, marcamos como sincronizado
                     db.detallePedidoDao().marcarComoSincronizado(dp.idDetalle);
-                    Log.d("SYNC", "ID " + dp.idDetalle + " sincronizado. Respuesta: " + response.code());
+                    Log.d("SYNC", "✅ Sincronizado ID: " + dp.idDetalle);
                 } else {
-                    // Si hay un error 400 (ej: no hay stock), marcamos huboError para reintentar luego
-                    Log.e("SYNC", "Error servidor ID " + dp.idDetalle + ": " + response.code());
-                    huboError = true;
+                    int code = response.code();
+                    if (code >= 400 && code < 500) {
+                        // ERROR CRÍTICO: El servidor rechaza los datos (ej: producto inexistente)
+                        db.detallePedidoDao().marcarComoErrorCritico(dp.idDetalle);
+                        Log.e("SYNC", "❌ Error Crítico (4xx) en ID " + dp.idDetalle + ": " + code);
+                    } else {
+                        // ERROR DE SERVIDOR: El backend falló (5xx), reintentamos luego
+                        huboErrorDeRed = true;
+                        Log.w("SYNC", "⚠️ Error Servidor (5xx) en ID " + dp.idDetalle);
+                    }
                 }
             } catch (Exception e) {
-                Log.e("SYNC", "Fallo de conexión para ID: " + dp.idDetalle, e);
-                huboError = true;
+                // FALLO DE RED: No hay internet o timeout
+                huboErrorDeRed = true;
+                Log.e("SYNC", "🌐 Fallo de conexión en ID: " + dp.idDetalle, e);
             }
         }
 
-        // Si hubo errores (ej. se cayó el internet a mitad), WorkManager reintenta después
-        return huboError ? Result.retry() : Result.success();
+        // Solo reintentamos si hubo fallos de red o servidor (5xx)
+        return huboErrorDeRed ? Result.retry() : Result.success();
     }
 }

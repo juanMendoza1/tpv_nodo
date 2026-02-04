@@ -13,8 +13,8 @@ public class RetrofitClient {
 
     private static Retrofit retrofit = null;
     // IP estándar para acceder al localhost del PC desde el emulador de Android
-    private static final String BASE_URL = //"http://192.168.1.8:8080/";
-    "http://10.44.11.68:8080/";
+    private static final String BASE_URL = "http://192.168.1.8:8080/";
+    //"http://10.44.11.68:8080/";
     //"http://192.168.1.56:8080/";
 
     public static ApiService getInterface(Context context) {

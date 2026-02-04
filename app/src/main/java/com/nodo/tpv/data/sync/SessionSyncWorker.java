@@ -27,25 +27,26 @@ public class SessionSyncWorker extends Worker {
 
         boolean huboError = false;
 
+        // Dentro de doWork() en SessionSyncWorker.java
         for (LogSesion log : logsPendientes) {
             try {
-                // Debes crear este endpoint en tu ApiService del Backend
                 Response<ResponseBody> response = RetrofitClient.getInterface(getApplicationContext())
-                        .reportarEventoSesion(
-                                log.idUsuario,
-                                log.slot,
-                                log.tipoEvento,
-                                log.timestamp
-                        ).execute();
+                        .reportarEventoSesion(log.idUsuario, log.slot, log.tipoEvento, log.timestamp)
+                        .execute();
 
                 if (response.isSuccessful()) {
-                    // Marcamos como sincronizado en Room
                     db.usuarioSlotDao().marcarLogSincronizado(log.idLog);
                 } else {
-                    huboError = true;
+                    int code = response.code();
+                    if (code >= 400 && code < 500) {
+                        // Error de datos (ej. usuario ya no existe en el backend)
+                        db.usuarioSlotDao().marcarLogComoErrorCritico(log.idLog);
+                    } else {
+                        huboError = true; // Error de servidor, reintentar
+                    }
                 }
             } catch (Exception e) {
-                huboError = true;
+                huboError = true; // Error de red
             }
         }
 

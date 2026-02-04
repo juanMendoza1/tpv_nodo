@@ -289,6 +289,7 @@ public class ProductoViewModel extends AndroidViewModel {
                 copiaGlobales.put(idClienteAnotador, nuevoScoreGlobal);
                 scoresIndividualesInd.setValue(copiaGlobales);
                 dbTrigger.setValue(System.currentTimeMillis());
+                _eventoVentaExitosa.setValue(true);
             });
         });
     }
@@ -401,7 +402,11 @@ public class ProductoViewModel extends AndroidViewModel {
                     db.detallePedidoDao().insertarDetalle(dp);
                 }
             }
-            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+            mainThreadHandler.post(() ->{
+                dbTrigger.setValue(System.currentTimeMillis());
+                _eventoVentaExitosa.setValue(true);
+            });
+
         });
     }
 
@@ -689,6 +694,7 @@ public class ProductoViewModel extends AndroidViewModel {
             mainThreadHandler.post(() -> {
                 actualizarPuntajeEquipoDinamico(colorEquipoGanador);
                 dbTrigger.setValue(System.currentTimeMillis()); // Esto refresca las burbujas
+                _eventoVentaExitosa.setValue(true);
             });
         });
     }
@@ -1528,6 +1534,16 @@ public class ProductoViewModel extends AndroidViewModel {
 
     public LiveData<List<Producto>> getProductosLiveData() {
         return db.productoDao().obtenerTodosProductosLiveData();
+    }
+
+    private final MutableLiveData<Boolean> _eventoVentaExitosa = new MutableLiveData<>();
+    public LiveData<Boolean> getEventoVentaExitosa() {
+        return _eventoVentaExitosa;
+    }
+
+    // En ProductoViewModel.java
+    public void resetEventoVenta() {
+        _eventoVentaExitosa.setValue(false);
     }
 
 }
