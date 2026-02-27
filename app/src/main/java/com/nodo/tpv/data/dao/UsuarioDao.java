@@ -18,7 +18,7 @@ public interface UsuarioDao {
     @Update
     void actualizar(Usuario usuario);
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) // <--- Asegúrate que diga REPLACE
     void insertarOActualizar(Usuario usuario);
 
     // NUEVO: Método que te faltaba para obtener la lista de todos los slots

@@ -90,4 +90,10 @@ dependencies {
 
     implementation 'org.mindrot:jbcrypt:0.4'
 
+    implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
+// O si usas la nueva versión Media3 (recomendado):
+// implementation 'androidx.media3:media3-exoplayer:1.2.0'
+// implementation 'androidx.media3:media3-ui:1.2.0'
+// implementation 'androidx.media3:media3-exoplayer-rtsp:1.2.0'
+
 }

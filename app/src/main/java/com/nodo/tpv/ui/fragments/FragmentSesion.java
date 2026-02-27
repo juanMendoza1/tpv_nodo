@@ -205,21 +205,17 @@ public class FragmentSesion extends Fragment {
 
         usuarioSlotViewModel.getOperacionExitosa().observe(getViewLifecycleOwner(), exito -> {
             if (exito != null && exito) {
-                // 1. Informar al sistema que la sesión es válida
                 if (usuarioSeleccionado != null) {
-                    // Sincronizamos con el SessionManager para mantener compatibilidad
                     sessionManager.guardarUsuario(usuarioSeleccionado);
 
-                    // 2. DISPARAR TU LÓGICA ORIGINAL
-                    // Esto llamará a onLoginExitoso en MainActivity
-                    if (listener != null) {
-                        listener.onLoginExitoso(usuarioSeleccionado);
+                    // 🔥 CORRECCIÓN: Obtener empresaId y disparar la sincronización de productos
+                    long empresaId = sessionManager.getEmpresaId();
+                    if (empresaId > 0) {
+                        sincronizarCatalogo(empresaId); // Primero sincroniza, luego navega
+                    } else {
+                        // Si no hay empresaId, igual dejamos entrar pero avisamos
+                        if (listener != null) listener.onLoginExitoso(usuarioSeleccionado);
                     }
-
-                    // 3. Limpiar estado visual
-                    etPin.setText("");
-                    if (tilPin != null) tilPin.setVisibility(View.GONE);
-                    if (btnLogin != null) btnLogin.setVisibility(View.GONE);
                 }
             }
         });
@@ -390,9 +386,8 @@ public class FragmentSesion extends Fragment {
         long empresaId = sessionManager.getEmpresaId();
         if (empresaId <= 0) return;
 
-        // 🔥 1. ACTIVAR LOADING ANTES DE LA PETICIÓN
-        if (rvSlots != null) rvSlots.setVisibility(View.GONE);
-        if (loadingSlots != null) loadingSlots.setVisibility(View.VISIBLE);
+        // Estado inicial: Mostramos carga, ocultamos lista
+        mostrarEstadoCargando(true);
 
         RetrofitClient.getInterface(requireContext()).obtenerUsuariosPorEmpresa(empresaId)
                 .enqueue(new Callback<List<Usuario>>() {
@@ -400,14 +395,22 @@ public class FragmentSesion extends Fragment {
                     public void onResponse(@NonNull Call<List<Usuario>> call, @NonNull Response<List<Usuario>> response) {
                         if (!isAdded()) return;
 
-                        // 🔥 2. OCULTAR AL RECIBIR RESPUESTA (ÉXITO)
-                        if (loadingSlots != null) loadingSlots.setVisibility(View.GONE);
-                        if (rvSlots != null) rvSlots.setVisibility(View.VISIBLE);
-
                         if (response.isSuccessful() && response.body() != null) {
-                            adapter.setUsuarios(response.body());
-                            // ... guardar en Room
+                            List<Usuario> usuariosRemotos = response.body();
+
+                            // Guardar en segundo plano pero actualizar UI de inmediato
+                            dbExecutor.execute(() -> {
+                                AppDatabase db = AppDatabase.getInstance(requireContext());
+                                for (Usuario u : usuariosRemotos) {
+                                    db.usuarioDao().insertarOActualizar(u);
+                                }
+                            });
+
+                            // 🔥 ÉXITO ONLINE: Mostramos la lista y ocultamos el spinner
+                            actualizarListaUsuarios(usuariosRemotos);
+
                         } else {
+                            // Fallo del servidor (ej. 404, 500) -> Intentar local
                             cargarSlotsDesdeDBLocal();
                         }
                     }
@@ -415,12 +418,7 @@ public class FragmentSesion extends Fragment {
                     @Override
                     public void onFailure(@NonNull Call<List<Usuario>> call, @NonNull Throwable t) {
                         if (!isAdded()) return;
-
-                        // 🔥 3. OCULTAR AL RECIBIR FALLO (ERROR DE RED)
-                        if (loadingSlots != null) loadingSlots.setVisibility(View.GONE);
-                        if (rvSlots != null) rvSlots.setVisibility(View.VISIBLE);
-
-                        Toast.makeText(getContext(), "Error de red: Cargando perfiles locales", Toast.LENGTH_SHORT).show();
+                        // Fallo de red -> Intentar local
                         cargarSlotsDesdeDBLocal();
                     }
                 });
@@ -431,17 +429,30 @@ public class FragmentSesion extends Fragment {
             List<Usuario> locales = AppDatabase.getInstance(requireContext()).usuarioDao().obtenerTodos();
             if (getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
-                    // 🔥 3. Aseguramos que la lista se vea tras la carga local
-                    if (rvSlots != null) rvSlots.setVisibility(View.VISIBLE);
-
-                    if (locales.isEmpty()) {
-                        Toast.makeText(getContext(), "No hay operarios locales. Se requiere internet.", Toast.LENGTH_LONG).show();
+                    if (!locales.isEmpty()) {
+                        // 🔥 ÉXITO OFFLINE: Mostramos la lista local
+                        actualizarListaUsuarios(locales);
+                        Toast.makeText(getContext(), "Modo Offline: Usuarios locales cargados", Toast.LENGTH_SHORT).show();
                     } else {
-                        adapter.setUsuarios(locales);
+                        // ERROR TOTAL: No hay datos ni internet
+                        mostrarEstadoCargando(false); // Ocultamos spinner
+                        Toast.makeText(getContext(), "Error: Se requiere conexión para la primera carga.", Toast.LENGTH_LONG).show();
                     }
                 });
             }
         });
+    }
+
+    private void mostrarEstadoCargando(boolean cargando) {
+        if (loadingSlots != null) loadingSlots.setVisibility(cargando ? View.VISIBLE : View.GONE);
+        if (rvSlots != null) rvSlots.setVisibility(cargando ? View.GONE : View.VISIBLE);
+    }
+
+    private void actualizarListaUsuarios(List<Usuario> usuarios) {
+        if (adapter != null) {
+            adapter.setUsuarios(usuarios);
+        }
+        mostrarEstadoCargando(false); // 🔥 CLAVE: Aquí aseguramos que el spinner se vaya
     }
 
     private void procesarLoginConPin() {
@@ -600,7 +611,6 @@ public class FragmentSesion extends Fragment {
                     @Override
                     public void onResponse(@NonNull Call<List<ProductoDTO>> call, @NonNull Response<List<ProductoDTO>> response) {
                         if (response.isSuccessful() && response.body() != null) {
-
                             // 2. Persistir en Room (Hilo de fondo) para no bloquear la UI
                             dbExecutor.execute(() -> {
                                 try {
@@ -609,7 +619,6 @@ public class FragmentSesion extends Fragment {
 
                                     for (ProductoDTO dto : response.body()) {
                                         com.nodo.tpv.data.entities.Producto p = new com.nodo.tpv.data.entities.Producto();
-
                                         // Mapeo exhaustivo
                                         p.idProducto = dto.id.intValue();
                                         p.nombreProducto = dto.nombre;
@@ -617,45 +626,69 @@ public class FragmentSesion extends Fragment {
                                         p.precioCosto = dto.precioCosto;
                                         p.stockActual = (dto.stockActual != null) ? dto.stockActual : 0;
                                         p.categoria = dto.categoriaNombre;
-
                                         entidades.add(p);
                                     }
 
                                     // Actualización masiva en la DB local
+                                    // El OnConflictStrategy.REPLACE garantiza que no se borren productos previos innecesariamente
                                     db.productoDao().insertarOActualizar(entidades);
 
                                     // 3. Regresar al hilo principal para navegar
                                     if (getActivity() != null) {
                                         getActivity().runOnUiThread(() -> {
                                             if (dialog != null) dialog.dismiss();
-                                            activarModoComandos(usuarioSeleccionado); // Cambiar UI local del fragment
-
+                                            activarModoComandos(usuarioSeleccionado);
                                             if (listener != null) {
-                                                listener.onLoginExitoso(usuarioSeleccionado); // Navegar al menú principal
+                                                listener.onLoginExitoso(usuarioSeleccionado);
                                             }
                                         });
                                     }
                                 } catch (Exception e) {
                                     Log.e("SYNC_ERR", "Error guardando productos: " + e.getMessage());
+                                    manejarFalloSincronizacion(dialog);
                                 }
                             });
                         } else {
-                            if (dialog != null) dialog.dismiss();
-                            Toast.makeText(getContext(), "Error: " + response.code(), Toast.LENGTH_SHORT).show();
-                            // Opcional: Permitir entrar aunque falle la sincronización si hay datos locales
-                            if (listener != null) listener.onLoginExitoso(usuarioSeleccionado);
+                            manejarFalloSincronizacion(dialog);
                         }
                     }
 
                     @Override
                     public void onFailure(@NonNull Call<List<ProductoDTO>> call, @NonNull Throwable t) {
-                        if (dialog != null) dialog.dismiss();
                         Log.e("API_ERR", "Fallo al descargar productos", t);
-                        Toast.makeText(getContext(), "Error de red: " + t.getMessage(), Toast.LENGTH_LONG).show();
-                        // Modo offline: Permitir entrar si ya existen datos
-                        if (listener != null) listener.onLoginExitoso(usuarioSeleccionado);
+                        manejarFalloSincronizacion(dialog);
                     }
                 });
+    }
+
+    /**
+     * Método de apoyo para manejar fallos de red o servidor.
+     * Verifica si hay productos en la DB local para permitir el trabajo offline.
+     */
+    private void manejarFalloSincronizacion(AlertDialog dialog) {
+        dbExecutor.execute(() -> {
+            AppDatabase db = AppDatabase.getInstance(requireContext().getApplicationContext());
+            // Verificamos si ya existen productos guardados anteriormente
+            int count = db.productoDao().getProductoCount();
+
+            if (getActivity() != null) {
+                getActivity().runOnUiThread(() -> {
+                    if (dialog != null) dialog.dismiss();
+
+                    if (count > 0) {
+                        // Si hay datos, entramos en modo offline
+                        Toast.makeText(getContext(), "Modo Offline: Usando inventario local", Toast.LENGTH_LONG).show();
+                        activarModoComandos(usuarioSeleccionado);
+                        if (listener != null) {
+                            listener.onLoginExitoso(usuarioSeleccionado);
+                        }
+                    } else {
+                        // Si la tabla está vacía y no hay internet, no se puede trabajar
+                        Toast.makeText(getContext(), "Error: No hay inventario local y no hay conexión.", Toast.LENGTH_LONG).show();
+                    }
+                });
+            }
+        });
     }
 
 

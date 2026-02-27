@@ -31,7 +31,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.LogBatallaAdapter;
-import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.ui.main.MainActivity;
@@ -45,25 +44,27 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-// LIBRERÍAS INTEGRADAS PARA CÁMARA Y ANIMACIÓN DE LAYOUT
-import androidx.camera.core.CameraSelector;
-import androidx.camera.core.Preview;
-import androidx.camera.view.PreviewView;
-import androidx.camera.lifecycle.ProcessCameraProvider;
-import androidx.core.content.ContextCompat;
-import com.google.common.util.concurrent.ListenableFuture;
+// --- NUEVAS IMPORTACIONES PARA WEBVIEW (PLAN B - MJPEG) ---
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+
+// LIBRERÍAS DE ANIMACIÓN DE LAYOUT
 import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.transition.TransitionManager;
 
 public class FragmentArenaDuelo extends Fragment {
 
-    // --- NUEVOS ESTADOS PARA MODO VAR ---
+    // --- ESTADOS PARA MODO VAR (VIDEO STREAMING) ---
     private boolean isVarActive = false;
-    private static final int REQUEST_CODE_PERMISSIONS = 10;
-    private static final String[] REQUIRED_PERMISSIONS = new String[]{android.Manifest.permission.CAMERA};
-    private PreviewView viewFinder;
-    private ProcessCameraProvider cameraProvider;
+
+    // Componentes de Video (WEBVIEW para MJPEG)
+    private WebView webViewCamara;
+
+    // URL DE LA CÁMARA (NODO CAM - Plan B)
+    // Usamos HTTP porque el servidor nativo MJPEG sirve una web
+    private String cameraUrl = "http://192.168.1.2:8080/";
 
     // Vistas de Paneles Deslizables
     private View panelHistorial, panelConfig, panelDespacho;
@@ -93,7 +94,6 @@ public class FragmentArenaDuelo extends Fragment {
     private MaterialButton btnReglaGanador, btnReglaTodos, btnReglaUltimo;
 
     private List<Integer> equiposSalvadosEnRonda = new ArrayList<>();
-
     private String reglaActualSync = "GANADOR_SALVA";
 
     public static FragmentArenaDuelo newInstance(List<Cliente> azul, List<Cliente> rojo, String tipoJuego, int idMesa) {
@@ -120,19 +120,6 @@ public class FragmentArenaDuelo extends Fragment {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CODE_PERMISSIONS) {
-            if (allPermissionsGranted()) {
-                // Si el permiso fue concedido, activamos el VAR automáticamente
-                toggleModoVAR(getView());
-            } else {
-                Toast.makeText(getContext(), "Permiso de cámara denegado", Toast.LENGTH_SHORT).show();
-            }
-        }
-    }
-
-    @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
@@ -141,10 +128,13 @@ public class FragmentArenaDuelo extends Fragment {
         }
         productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
 
-        // 1. VINCULACIÓN DE ESTRUCTURA Y CÁMARA
+        // 1. VINCULACIÓN DE ESTRUCTURA Y VIDEO
         layoutContenidoArena = view.findViewById(R.id.layoutContenidoArena);
         panelAcciones = view.findViewById(R.id.panelAccionesLateral);
-        viewFinder = view.findViewById(R.id.viewFinder); // PreviewView del modo VAR
+
+        // CORRECCIÓN: Usamos el ID del WebView (Asegúrate que el XML tenga <WebView android:id="@+id/webViewCamara">)
+        webViewCamara = view.findViewById(R.id.webViewCamara);
+        configurarWebView(); // Configuramos el navegador interno
 
         // 2. VINCULACIÓN DE PANELES
         panelHistorial = view.findViewById(R.id.panelHistorialDeslizable);
@@ -171,16 +161,11 @@ public class FragmentArenaDuelo extends Fragment {
         view.findViewById(R.id.btnVerPendientes).setOnClickListener(v -> toggleDespacho(true));
         view.findViewById(R.id.btnCerrarDespacho).setOnClickListener(v -> toggleDespacho(false));
         view.findViewById(R.id.btnEntregarTodoLateral).setOnClickListener(v -> {
-            // 1. Obtener datos del operario actual
             com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(requireContext());
             String loginOperativo = session.obtenerUsuario().login;
             int idOperativo = session.obtenerUsuario().idUsuario;
 
-            // 2. Ejecutar despacho masivo
-            // Pasamos el login para el Backend y el ID para la DB local (Room)
             productoViewModel.despacharTodoLaMesa(idMesaActual, idOperativo, loginOperativo);
-
-            // 3. UI Feedback
             toggleDespacho(false);
             Toast.makeText(getContext(), "Despachando productos...", Toast.LENGTH_SHORT).show();
         });
@@ -193,13 +178,9 @@ public class FragmentArenaDuelo extends Fragment {
         view.findViewById(R.id.fabSeleccionarMunicion).setOnClickListener(v -> abrirCatalogo());
         view.findViewById(R.id.btnFinalizarDuelo).setOnClickListener(v -> mostrarResumenFinalBatalla());
 
-        // --- BOTÓN VAR (ACTIVACIÓN DE CÁMARA) ---
+        // --- BOTÓN VAR (ACTIVACIÓN DE STREAMING) ---
         view.findViewById(R.id.btnVAR).setOnClickListener(v -> {
-            if (allPermissionsGranted()) {
-                toggleModoVAR(view);
-            } else {
-                requestPermissions(REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
-            }
+            toggleModoVAR(view);
         });
 
         btnReglaGanador.setOnClickListener(v -> productoViewModel.actualizarReglaDuelo("GANADOR_SALVA"));
@@ -226,7 +207,7 @@ public class FragmentArenaDuelo extends Fragment {
 
         productoViewModel.getReglaCobroDuelo().observe(getViewLifecycleOwner(), regla -> {
             if (regla != null) {
-                this.reglaActualSync = regla; // Mantenemos la variable actualizada
+                this.reglaActualSync = regla;
                 actualizarBotonesReglaUI(regla);
                 tvReglaActiva.setText("REGLA: " + regla.replace("_", " "));
             }
@@ -249,7 +230,29 @@ public class FragmentArenaDuelo extends Fragment {
         productoViewModel.getDbTrigger().observe(getViewLifecycleOwner(), t -> vincularScoresExistentes());
     }
 
-    // --- LÓGICA DE TRANSICIÓN 60/40 Y CÁMARA (MODO VAR) ---
+    // --- CONFIGURACIÓN DEL VISOR WEB (MJPEG PLAYER) ---
+
+    private void configurarWebView() {
+        if (webViewCamara != null) {
+            WebSettings settings = webViewCamara.getSettings();
+            settings.setJavaScriptEnabled(true);
+
+            // --- AJUSTES PARA ZOOM ---
+            settings.setSupportZoom(true);        // Habilitar soporte de zoom
+            settings.setBuiltInZoomControls(true); // Habilitar controles nativos (pellizcar)
+            settings.setDisplayZoomControls(false); // OCULTAR botones +/- feos
+
+            // Ajustes de pantalla
+            settings.setLoadWithOverviewMode(true);
+            settings.setUseWideViewPort(true);
+
+            webViewCamara.setInitialScale(100);
+            webViewCamara.setBackgroundColor(Color.BLACK);
+            webViewCamara.setWebViewClient(new WebViewClient());
+        }
+    }
+
+    // --- LÓGICA DE TRANSICIÓN 60/40 Y CARGA DE VIDEO ---
 
     private void toggleModoVAR(View view) {
         isVarActive = !isVarActive;
@@ -257,100 +260,57 @@ public class FragmentArenaDuelo extends Fragment {
         ConstraintSet set = new ConstraintSet();
         set.clone(root);
 
-        View cameraContainer = view.findViewById(R.id.containerCameraVAR);
-
         if (isVarActive) {
             // 1. Mostrar el contenedor primero
-            cameraContainer.setVisibility(View.VISIBLE);
+            webViewCamara.setVisibility(View.VISIBLE);
 
-            // 2. Aplicar el cambio de layout (60/40)
-            set.setGuidelinePercent(R.id.guidelineVAR, 0.45f); // Un poco menos del 50 para evitar distorsión
+            // 2. Cargar el stream (Agregamos timestamp para evitar caché vieja)
+            if (webViewCamara != null) {
+                webViewCamara.loadUrl(cameraUrl + "?t=" + System.currentTimeMillis());
+            }
+
+            // 3. Aplicar el cambio de layout (60/40) para dar espacio al video
+            set.setGuidelinePercent(R.id.guidelineVAR, 0.45f);
             containerMarcadoresDinamicos.setOrientation(LinearLayout.VERTICAL);
 
-            // 3. Animación suave
-            TransitionManager.beginDelayedTransition(root);
-            set.applyTo(root);
-
-            // 4. ESPERAR 300ms a que la animación termine antes de encender el hardware
-            // Esto evita el error de CameraState CLOSED
-            viewFinder.postDelayed(() -> {
-                if (isVarActive && isAdded()) {
-                    // Verificamos si la vista ya tiene tamaño real
-                    if (viewFinder.getWidth() > 0) {
-                        startCamera();
-                    } else {
-                        // Si el layout es muy lento, esperamos un poco más
-                        viewFinder.postDelayed(this::startCamera, 300);
-                    }
-                }
-            }, 700);
-
         } else {
-            stopCamera();
-            set.setGuidelinePercent(R.id.guidelineVAR, 0.0f);
-            cameraContainer.setVisibility(View.GONE);
-            containerMarcadoresDinamicos.setOrientation(LinearLayout.HORIZONTAL);
-            TransitionManager.beginDelayedTransition(root);
-            set.applyTo(root);
-        }
-    }
-
-    private void startCamera() {
-        if (!isAdded() || viewFinder == null) return;
-
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
-                ProcessCameraProvider.getInstance(requireContext());
-
-        cameraProviderFuture.addListener(() -> {
-            try {
-                cameraProvider = cameraProviderFuture.get();
-                cameraProvider.unbindAll();
-
-                // Forzamos una resolución estándar para evitar el cálculo de SurfaceList
-                Preview preview = new Preview.Builder()
-                        .setTargetAspectRatio(androidx.camera.core.AspectRatio.RATIO_4_3)
-                        .build();
-
-                CameraSelector cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA;
-
-                // VINCULACIÓN CRÍTICA: Primero definimos dónde dibujar
-                preview.setSurfaceProvider(viewFinder.getSurfaceProvider());
-
-                // Luego vinculamos al hardware
-                cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview);
-
-                Log.d("VAR_DEBUG", "Cámara vinculada correctamente");
-
-            } catch (Exception e) {
-                Log.e("CAMERA_ERROR", "Error de configuración: " + e.getMessage());
+            // 1. Detener carga (Ahorro de memoria)
+            if (webViewCamara != null) {
+                webViewCamara.loadUrl("about:blank");
+                webViewCamara.setVisibility(View.GONE);
             }
-        }, ContextCompat.getMainExecutor(requireContext()));
+
+            // 2. Restaurar layout original
+            set.setGuidelinePercent(R.id.guidelineVAR, 0.0f);
+            containerMarcadoresDinamicos.setOrientation(LinearLayout.HORIZONTAL);
+        }
+
+        // Animación suave del layout
+        TransitionManager.beginDelayedTransition(root);
+        set.applyTo(root);
     }
 
-    private void stopCamera() {
-        if (cameraProvider != null) {
-            cameraProvider.unbindAll();
+    // --- GESTIÓN DE CICLO DE VIDA ---
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        // Si salimos, paramos el video para no gastar batería
+        if (webViewCamara != null) {
+            webViewCamara.loadUrl("about:blank");
         }
     }
 
     @Override
-    public void onDestroyView() {
-        super.onDestroyView();
-        if (cameraProvider != null) {
-            cameraProvider.unbindAll();
+    public void onResume() {
+        super.onResume();
+        // Si el VAR estaba activo, recargamos el video al volver
+        if (isVarActive && webViewCamara != null) {
+            webViewCamara.loadUrl(cameraUrl + "?t=" + System.currentTimeMillis());
         }
     }
 
-    private boolean allPermissionsGranted() {
-        for (String permission : REQUIRED_PERMISSIONS) {
-            if (ContextCompat.checkSelfPermission(requireContext(), permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // --- LÓGICA DE JUEGO Y MARCADORES ---
+    // --- LÓGICA DE JUEGO Y MARCADORES (SIN CAMBIOS) ---
 
     private void validarYProcesarPunto(int colorEquipo) {
         if (hayPendientesBloqueantes) {
@@ -388,8 +348,6 @@ public class FragmentArenaDuelo extends Fragment {
                 }).show();
     }
 
-    // --- MÉTODOS DE APOYO DINÁMICO ---
-
     private void generarInterfazDinamica(Map<Integer, Integer> mapa) {
         containerGuerrerosDinamicos.removeAllViews();
         containerMarcadoresDinamicos.removeAllViews();
@@ -411,12 +369,9 @@ public class FragmentArenaDuelo extends Fragment {
                     return;
                 }
 
-                // USAMOS LA VARIABLE SINCRONIZADA
                 if ("ULTIMO_PAGA".equals(reglaActualSync)) {
-                    // Solo llamamos a esta función. Ella se encargará de "Salvar" o "Ejecutar"
                     gestionarReglaUltimoPaga(color);
                 } else {
-                    // Modo impacto directo para las otras reglas
                     validarYProcesarPunto(color);
                 }
             });
@@ -459,30 +414,22 @@ public class FragmentArenaDuelo extends Fragment {
         btnReglaUltimo.setStrokeColor(ColorStateList.valueOf(reglaActiva.equals("ULTIMO_PAGA") ? colorActivo : colorInactivo));
     }
 
-    // --- CONTROL DE PANELES LATERALES ---
-
     private void toggleDespacho(boolean mostrar) {
         if (despachoVisible == mostrar) return;
 
         if (mostrar) {
-            // 1. Obtener datos de sesión
             com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(requireContext());
             com.nodo.tpv.data.entities.Usuario user = session.obtenerUsuario();
 
-            // Extraemos los valores (con seguridad por si el usuario es null)
             final int idOp = (user != null) ? user.idUsuario : 0;
             final String loginOp = (user != null) ? user.login : "desconocido";
 
             productoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
                 if (lista != null) {
                     rvDespachoLateral.setLayoutManager(new LinearLayoutManager(getContext()));
-
-                    // 2. Actualizar el click del adapter para usar los datos reales
                     rvDespachoLateral.setAdapter(new LogBatallaAdapter(lista, item -> {
-                        // Llamamos a la función con el ID (int) y el Login (String)
                         productoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
                     }));
-
                     if (lista.isEmpty() && despachoVisible) toggleDespacho(false);
                 }
             });
@@ -562,7 +509,6 @@ public class FragmentArenaDuelo extends Fragment {
         new MaterialAlertDialogBuilder(requireContext(), R.style.MaterialAlertDialog_Garena)
                 .setTitle("FINALIZAR BATALLA")
                 .setPositiveButton("SÍ", (d, w) -> {
-                    // Pasamos el ID de la mesa y el tag de Pool
                     productoViewModel.finalizarDueloCompleto(idMesaActual, "POOL");
                     getParentFragmentManager().popBackStack();
                 }).show();
@@ -579,34 +525,29 @@ public class FragmentArenaDuelo extends Fragment {
     }
 
     private void gestionarReglaUltimoPaga(int colorEquipoTocado) {
-        // 1. Evitar clics accidentales en equipos que ya se salvaron en esta ronda
         if (equiposSalvadosEnRonda.contains(colorEquipoTocado)) return;
 
-        // 2. Obtener el mapa de participantes para calcular el total de equipos únicos reales
         Map<Integer, Integer> mapa = productoViewModel.getMapaColoresDuelo().getValue();
         if (mapa == null) return;
 
         java.util.Set<Integer> coloresUnicos = new java.util.HashSet<>(mapa.values());
         int totalEquipos = coloresUnicos.size();
 
-        // 3. Registrar al sobreviviente y disparar animación de "salida"
         equiposSalvadosEnRonda.add(colorEquipoTocado);
 
         for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
             View v = containerMarcadoresDinamicos.getChildAt(i);
             if (v.getTag() instanceof Integer && (int) v.getTag() == colorEquipoTocado) {
-                animarEquipoSalvado(v); // Tu animación de expansión y transparencia
+                animarEquipoSalvado(v);
                 v.setEnabled(false);
                 break;
             }
         }
 
-        // 4. Feedback visual: El primero es el ganador del punto (+1)
         if (equiposSalvadosEnRonda.size() == 1) {
             Toast.makeText(getContext(), "GANADOR: " + getNombreColor(colorEquipoTocado) + " 🏆", Toast.LENGTH_SHORT).show();
         }
 
-        // 5. ¿QUEDÓ SÓLO EL ÚLTIMO? (Detección de perdedor por descarte)
         if (equiposSalvadosEnRonda.size() == totalEquipos - 1) {
             int colorPerdedorFinal = -1;
             for (Integer c : coloresUnicos) {
@@ -618,11 +559,10 @@ public class FragmentArenaDuelo extends Fragment {
 
             if (colorPerdedorFinal != -1) {
                 final int perdedor = colorPerdedorFinal;
-                final int ganador = equiposSalvadosEnRonda.get(0); // El que tocó primero
+                final int ganador = equiposSalvadosEnRonda.get(0);
 
-                animarPerdedorFinal(perdedor); // Animación de parpadeo rojo
+                animarPerdedorFinal(perdedor);
 
-                // Delay de 1 segundo para crear tensión antes del cobro
                 new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                     Toast.makeText(getContext(), "¡Ronda finalizada! Paga: " + getNombreColor(perdedor), Toast.LENGTH_LONG).show();
                     aplicarCierreRondaUltimoPaga(ganador, perdedor);
@@ -635,55 +575,12 @@ public class FragmentArenaDuelo extends Fragment {
     }
 
     private void aplicarCierreRondaUltimoPaga(int colorGanador, int colorPerdedor) {
-        // 1. Ejecutar la transferencia de deuda en el ViewModel
         productoViewModel.aplicarDanioUltimoPaga(colorGanador, colorPerdedor);
-
-        // 2. Lottie de celebración
         dispararCelebracion();
-
-        // 3. Limpiar la lista de la ronda actual para la siguiente jugada
         equiposSalvadosEnRonda.clear();
-
-        // 4. Restaurar visualmente todos los marcadores (animación de ola)
         animarRestauracionUI();
-
-        Log.d("ARENA_LOGIC", "Ronda finalizada. Ganador: " + colorGanador + " | Perdedor: " + colorPerdedor);
     }
 
-    /**
-     * Pone el marcador del equipo en modo "Salvado" (transparente y deshabilitado)
-     */
-    private void marcarEquipoComoSalvadoUI(int color) {
-        if (containerMarcadoresDinamicos == null) return;
-
-        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
-            View v = containerMarcadoresDinamicos.getChildAt(i);
-            // Buscamos el marcador que coincide con el color tocado
-            if (v.getTag() instanceof Integer && (int) v.getTag() == color) {
-                v.animate().alpha(0.3f).scaleX(0.9f).scaleY(0.9f).setDuration(300).start();
-                v.setEnabled(false); // Evita que le den doble clic por error
-                break;
-            }
-        }
-    }
-
-    /**
-     * Restaura todos los marcadores a su estado normal (opacos y habilitados)
-     * Se llama al final de la ronda cuando ya se aplicó el cobro al perdedor.
-     */
-    private void restaurarVisualMarcadores() {
-        if (containerMarcadoresDinamicos == null) return;
-
-        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
-            View v = containerMarcadoresDinamicos.getChildAt(i);
-            v.animate().alpha(1.0f).scaleX(1.0f).scaleY(1.0f).setDuration(300).start();
-            v.setEnabled(true);
-        }
-    }
-
-    /**
-     * 1. Animación de "Salvación": El equipo se expande un poco y luego se desvanece.
-     */
     private void animarEquipoSalvado(View view) {
         view.animate()
                 .scaleX(1.1f)
@@ -692,24 +589,18 @@ public class FragmentArenaDuelo extends Fragment {
                 .setDuration(400)
                 .setInterpolator(new DecelerateInterpolator())
                 .withEndAction(() -> {
-                    // Se separan las líneas para evitar el error de tipo 'void'
                     view.setScaleX(0.95f);
                     view.setScaleY(0.95f);
                 })
                 .start();
     }
 
-    /**
-     * 2. Animación de "Sentencia": El último equipo parpadea en rojo antes de cobrar.
-     */
     private void animarPerdedorFinal(int colorPerdedor) {
         if (containerMarcadoresDinamicos == null) return;
 
         for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
             View v = containerMarcadoresDinamicos.getChildAt(i);
             if (v.getTag() instanceof Integer && (int) v.getTag() == colorPerdedor) {
-
-                // Animación de escala pulsante agresiva
                 ObjectAnimator scaleX = ObjectAnimator.ofFloat(v, "scaleX", 1f, 1.15f, 1f);
                 ObjectAnimator scaleY = ObjectAnimator.ofFloat(v, "scaleY", 1f, 1.15f, 1f);
                 scaleX.setRepeatCount(3);
@@ -717,7 +608,6 @@ public class FragmentArenaDuelo extends Fragment {
                 scaleX.setDuration(200);
                 scaleY.setDuration(200);
 
-                // Cambiar el color del borde a rojo intenso temporalmente
                 if (v instanceof MaterialCardView) {
                     ((MaterialCardView) v).setStrokeColor(ColorStateList.valueOf(Color.RED));
                     ((MaterialCardView) v).setStrokeWidth(12);
@@ -730,25 +620,20 @@ public class FragmentArenaDuelo extends Fragment {
         }
     }
 
-    /**
-     * 3. Animación de "Reset": Barrido de luz para restaurar todos los marcadores.
-     */
     private void animarRestauracionUI() {
         if (containerMarcadoresDinamicos == null) return;
 
         for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
             View v = containerMarcadoresDinamicos.getChildAt(i);
 
-            // Animación encadenada por índice para efecto "ola"
             v.animate()
                     .alpha(1.0f)
                     .scaleX(1.0f)
                     .scaleY(1.0f)
-                    .setStartDelay(i * 100L) // Efecto cascada
+                    .setStartDelay(i * 100L)
                     .setDuration(400)
                     .start();
 
-            // Restaurar borde original según su color
             if (v instanceof MaterialCardView && v.getTag() instanceof Integer) {
                 ((MaterialCardView) v).setStrokeColor(ColorStateList.valueOf((int)v.getTag()));
                 ((MaterialCardView) v).setStrokeWidth(6);
@@ -756,5 +641,4 @@ public class FragmentArenaDuelo extends Fragment {
             v.setEnabled(true);
         }
     }
-
 }
