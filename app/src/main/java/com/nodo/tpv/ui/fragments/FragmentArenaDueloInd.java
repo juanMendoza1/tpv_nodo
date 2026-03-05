@@ -327,7 +327,8 @@ public class FragmentArenaDueloInd extends Fragment {
     }
 
     private void abrirPanelReclutamientoPro() {
-        clienteViewModel.getClientesActivos().observe(getViewLifecycleOwner(), todos -> {
+        // 🔥 CAMBIO MULTIMESA: Ahora pedimos solo los clientes registrados en ESTA mesa
+        clienteViewModel.getClientesPorMesa(idMesaActual).observe(getViewLifecycleOwner(), todos -> {
             List<Integer> idsOcupados = productoViewModel.obtenerIdsParticipantesArena();
             List<com.nodo.tpv.data.dto.ClienteConSaldo> filtrados = new ArrayList<>();
 
@@ -383,7 +384,7 @@ public class FragmentArenaDueloInd extends Fragment {
                         holder.tvAlias.setScaleY(1.0f);
                     }
 
-                    // 🔥 ASIGNACIÓN DIRECTA DEL CLICK (Solución al problema de selección)
+                    // 🔥 ASIGNACIÓN DIRECTA DEL CLICK
                     holder.itemView.setOnClickListener(v -> {
                         idSeleccionado = cliente.idCliente;
                         clienteSeleccionadoPro = cliente;

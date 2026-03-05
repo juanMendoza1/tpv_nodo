@@ -203,7 +203,7 @@ public class FragmentArenaDuelo extends Fragment {
         });
 
         // 6. OBSERVADORES
-        productoViewModel.recuperarDueloActivo();
+        productoViewModel.recuperarDueloActivo(idMesaActual);
 
         productoViewModel.getReglaCobroDuelo().observe(getViewLifecycleOwner(), regla -> {
             if (regla != null) {

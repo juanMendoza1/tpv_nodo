@@ -47,4 +47,7 @@ public interface MesaDao {
     @Query("SELECT reglaDuelo FROM mesa WHERE idMesa = :idMesa")
     String obtenerReglaSincrona(int idMesa);
 
+    @Query("DELETE FROM mesa")
+    void eliminarTodasLasMesas();
+
 }

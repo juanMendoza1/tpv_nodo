@@ -29,6 +29,7 @@ import androidx.work.WorkManager;
 import androidx.work.WorkRequest;
 
 import com.nodo.tpv.R;
+import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.entities.Usuario;
 import com.nodo.tpv.data.sync.SessionSyncWorker;
 import com.nodo.tpv.data.sync.StockSyncWorker;
@@ -162,14 +163,23 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
     @Override
     public void onLogout() {
         if (sessionManager != null) sessionManager.borrarSesion();
-        setExpandirContenedor(false);
+
+        setExpandirContenedor(false); // Retrae el panel al 40%
+
+        // 🔥 NUEVO: Limpiamos la tabla de mesas físicas en la Base de Datos
+        // para que el siguiente operario empiece con el local en cero.
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            AppDatabase.getInstance(this).mesaDao().eliminarTodasLasMesas();
+        });
+
         FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
         transaction.setCustomAnimations(android.R.anim.fade_in, android.R.anim.slide_out_right);
         getSupportFragmentManager().popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
         transaction.replace(R.id.container_fragments, new FragmentBloqueo());
         transaction.replace(R.id.container_right, new FragmentSesion());
         transaction.commit();
-        Toast.makeText(this, "Turno finalizado", Toast.LENGTH_SHORT).show();
+
+        Toast.makeText(this, "Turno finalizado y panel reiniciado", Toast.LENGTH_SHORT).show();
     }
 
     @Override

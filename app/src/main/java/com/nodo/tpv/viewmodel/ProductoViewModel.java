@@ -134,7 +134,7 @@ public class ProductoViewModel extends AndroidViewModel {
 
     public LiveData<List<DetalleHistorialDuelo>> obtenerHistorialItemsActivo() {
         if (uuidDueloActual == null) {
-            executorService.execute(() -> uuidDueloActual = db.dueloDao().obtenerUuidDueloActivo());
+            executorService.execute(() -> uuidDueloActual = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesaActual));
         }
         return db.detallePedidoDao().obtenerHistorialItemsDuelo(uuidDueloActual);
     }
@@ -149,7 +149,7 @@ public class ProductoViewModel extends AndroidViewModel {
         for (Cliente c : equipo) ids.add(c.idCliente);
 
         executorService.execute(() -> {
-            if (uuidDueloActual == null) uuidDueloActual = db.dueloDao().obtenerUuidDueloActivo();
+            if (uuidDueloActual == null) uuidDueloActual = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesaActual);
             BigDecimal suma = db.detallePedidoDao().obtenerSumaSaldosDuelo(ids, uuidDueloActual);
             resultado.postValue(suma != null ? suma : BigDecimal.ZERO);
         });
@@ -177,7 +177,7 @@ public class ProductoViewModel extends AndroidViewModel {
         executorService.execute(() -> {
             // 2. RECUPERAR O GENERAR EL UUID DEL DUELO
             // Es vital que uuidDueloActual tenga valor antes de disparar el dbTrigger
-            String uuidExistente = db.dueloDao().obtenerUuidDueloActivoInd();
+            String uuidExistente = db.dueloDao().obtenerUuidDueloActivoIndPorMesa(idMesa);
             if (uuidExistente != null) {
                 this.uuidDueloActual = uuidExistente;
             } else {
@@ -337,7 +337,7 @@ public class ProductoViewModel extends AndroidViewModel {
         executorService.execute(() -> {
             // 1. Obtener datos básicos
             int idMesa = db.clienteDao().obtenerMesaDelCliente(idCliente);
-            String uuidDuelo = db.dueloDao().obtenerUuidDueloActivo(); // Buscamos si hay un duelo en curso
+            String uuidDuelo = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesa); // Buscamos si hay un duelo en curso
 
             // 2. Crear el objeto DetallePedido
             DetallePedido dp = new DetallePedido();
@@ -496,7 +496,7 @@ public class ProductoViewModel extends AndroidViewModel {
             // 1. Limpieza en Base de Datos diferenciada
             if ("POOL".equals(tipoJuego)) {
                 // Finaliza registros en la tabla duelos_temporales
-                db.dueloDao().finalizarDueloActual();
+                db.dueloDao().finalizarDueloPorMesa(idMesa);
             } else if ("3BANDAS".equals(tipoJuego)) {
                 // Finaliza registros en la tabla duelos_temporales_ind usando el ID real
                 db.dueloTemporalIndDao().finalizarDueloMesa(idMesa);
@@ -588,7 +588,7 @@ public class ProductoViewModel extends AndroidViewModel {
             // Opcional: Si quieres que sea ultra seguro ante cierres,
             // búscalo en la DB antes de generar uno nuevo
             executorService.execute(() -> {
-                String uuidExistente = db.dueloDao().obtenerUuidDueloActivo();
+                String uuidExistente = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesaActual);
                 if (uuidExistente != null) {
                     this.uuidDueloActual = uuidExistente;
                 }
@@ -609,7 +609,7 @@ public class ProductoViewModel extends AndroidViewModel {
 
         executorService.execute(() -> {
             try {
-                db.dueloDao().borrarDueloFallido();
+                db.dueloDao().borrarDueloFallidoPorMesa(idMesa);
 
                 for (Map.Entry<Integer, Integer> entry : copiaSeleccion.entrySet()) {
                     int idCliente = entry.getKey();
@@ -813,21 +813,26 @@ public class ProductoViewModel extends AndroidViewModel {
 
 
     // Nuevo método para rehidratar los datos desde la BD al volver a la Arena
-    public void recuperarDueloActivo() {
+    // 🔥 NUEVO: Ahora requiere el ID de la mesa para saber qué datos cargar en memoria
+    public void recuperarDueloActivo(int idMesa) {
+        // Guardamos la mesa actual en la que el operario acaba de entrar
+        this.idMesaActual = idMesa;
+
         executorService.execute(() -> {
-            String uuid = db.dueloDao().obtenerUuidDueloActivo();
+            // Buscamos el UUID pero SOLO de esta mesa
+            String uuid = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesa);
+
             if (uuid != null) {
                 this.uuidDueloActual = uuid;
 
-                // 1. Recuperamos los objetos Cliente reales para los nombres
-                this.todosLosParticipantesDuelo = db.dueloDao().obtenerTodosLosParticipantesDuelo();
+                // 1. Recuperamos los objetos Cliente reales para los nombres (SOLO DE ESTA MESA)
+                this.todosLosParticipantesDuelo = db.dueloDao().obtenerTodosLosParticipantesDueloPorMesa(idMesa);
 
                 // 2. Recuperamos la estructura de equipos (IDs y Colores)
-                List<DueloTemporal> participantes = db.dueloDao().obtenerParticipantesSincrono();
+                List<DueloTemporal> participantes = db.dueloDao().obtenerParticipantesSincronoPorMesa(idMesa);
                 Map<Integer, Integer> mapaRecuperado = new HashMap<>();
 
                 for (DueloTemporal dt : participantes) {
-                    // dt.idEquipo ahora es el COLOR (int) que guardamos en la selección de POOL
                     mapaRecuperado.put(dt.idCliente, dt.idEquipo);
                 }
 
@@ -838,7 +843,14 @@ public class ProductoViewModel extends AndroidViewModel {
                         String reglaDB = db.dueloDao().obtenerReglaCobroDuelo(uuidDueloActual);
                         if (reglaDB != null) reglaCobroActiva.postValue(reglaDB);
                     });
-                    this.dbTrigger.setValue(System.currentTimeMillis()); // 🔥 Forzar refresco de saldos
+                    this.dbTrigger.setValue(System.currentTimeMillis());
+                });
+            } else {
+                // Si entra a una mesa vacía, limpiamos la pantalla
+                mainThreadHandler.post(() -> {
+                    this.uuidDueloActual = null;
+                    this.mapaColoresDuelo.setValue(new HashMap<>());
+                    this.enModoDuelo.setValue(false);
                 });
             }
         });
@@ -949,7 +961,7 @@ public class ProductoViewModel extends AndroidViewModel {
 
             // 3. Si sigue siendo null, buscamos en la tabla de POOL
             if (uuid == null) {
-                uuid = db.dueloDao().obtenerUuidDueloActivo();
+                uuid = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesa);
             }
 
             if (uuid == null) {
@@ -1259,7 +1271,7 @@ public class ProductoViewModel extends AndroidViewModel {
     public void insertarMunicionBolsaIndPendiente(int idMesa, Producto producto) {
         executorService.execute(() -> {
             if (this.uuidDueloActual == null) {
-                this.uuidDueloActual = db.dueloDao().obtenerUuidDueloActivo();
+                this.uuidDueloActual = db.dueloDao().obtenerUuidDueloActivoIndPorMesa(idMesa);
             }
             DetallePedido dp = new DetallePedido();
             dp.idProducto = producto.idProducto;
@@ -1284,7 +1296,7 @@ public class ProductoViewModel extends AndroidViewModel {
             MutableLiveData<List<Producto>> liveData = new MutableLiveData<>();
             executorService.execute(() -> {
                 // Re-validamos el UUID en cada disparo del trigger
-                String uuid = (uuidDueloActual != null) ? uuidDueloActual : db.dueloDao().obtenerUuidDueloActivo();
+                String uuid = (uuidDueloActual != null) ? uuidDueloActual : db.dueloDao().obtenerUuidDueloActivoIndPorMesa(idMesaActual);
 
                 if (uuid != null) {
                     List<Producto> lista = db.productoDao().obtenerProductosBolsaEntregados(uuid);

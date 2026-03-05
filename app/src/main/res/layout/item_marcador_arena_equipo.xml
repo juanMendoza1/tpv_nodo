@@ -2,52 +2,118 @@
 <com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_marginHorizontal="6dp"
-    android:layout_marginVertical="4dp"
-    app:cardBackgroundColor="#33000000"
-    app:cardCornerRadius="40dp"
+    android:layout_width="0dp" android:layout_height="wrap_content"
+    android:layout_weight="1" android:layout_margin="8dp"
+    app:cardBackgroundColor="#1A000000"
+    app:cardCornerRadius="16dp"
     app:cardElevation="0dp"
-    app:strokeWidth="2.5dp"
-    app:strokeColor="#00E5FF">
+    app:strokeColor="#00E5FF"
+    app:strokeWidth="2dp">
 
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="8dp"
-        android:minWidth="80dp"
-        android:gravity="center">
-
-        <TextView
-            android:id="@+id/tvScoreDinamico"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="0"
-            android:textColor="#FFFFFF"
-            android:textSize="34sp"
-            android:textStyle="bold"
-            android:includeFontPadding="false"
-            android:fontFamily="monospace"/>
+        android:padding="12dp">
 
         <TextView
             android:id="@+id/tvLabelEquipoDinamico"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="AMARILLO"
-            android:textColor="#E6FFFFFF"
-            android:textSize="10sp"
+            android:text=""
+            android:textAlignment="center"
+            android:textColor="#00E5FF"
             android:textStyle="bold"
-            android:letterSpacing="0.05"
-            android:textAllCaps="true"
-            android:includeFontPadding="false"
             android:lines="1"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:maxWidth="70dp"
-            android:scrollHorizontally="true"/>
+            app:autoSizeTextType="uniform"
+            app:autoSizeMinTextSize="12sp"
+            app:autoSizeMaxTextSize="22sp"
+            android:layout_marginBottom="4dp"/>
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:weightSum="10" android:layout_marginBottom="8dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnFalta"
+                style="@style/Widget.MaterialComponents.Button.Icon"
+                android:layout_width="0dp"
+                android:layout_weight="2.5"
+                android:layout_height="60dp"
+                app:backgroundTint="#1AFF1744"
+                app:cornerRadius="16dp"
+                app:icon="@drawable/ic_remove"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconTint="#FF1744"
+                app:strokeColor="#FF1744"
+                app:strokeWidth="2dp" />
+
+            <TextView
+                android:id="@+id/tvScoreDinamico"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="5"
+                android:text="0"
+                android:textAlignment="center"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:lines="1"
+                android:fontFamily="sans-serif-black"
+                app:autoSizeTextType="uniform"
+                app:autoSizeMinTextSize="24sp"
+                app:autoSizeMaxTextSize="64sp"
+                app:autoSizeStepGranularity="2sp"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAnotarBola"
+                style="@style/Widget.MaterialComponents.Button.Icon"
+                android:layout_width="0dp"
+                android:layout_weight="2.5"
+                android:layout_height="60dp"
+                app:backgroundTint="#1A00E5FF"
+                app:cornerRadius="16dp"
+                app:icon="@drawable/ic_add"
+                app:iconGravity="textStart"
+                app:iconPadding="0dp"
+                app:iconTint="#00E5FF"
+                app:strokeColor="#00E5FF"
+                app:strokeWidth="2dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/layoutInventarioBolas"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF"
+                android:layout_marginBottom="8dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BOLAS CONFIRMADAS"
+                android:textColor="#80FFFFFF"
+                android:textSize="10sp"
+                android:layout_marginBottom="8dp"/>
+
+            <com.google.android.flexbox.FlexboxLayout
+                android:id="@+id/containerBolasIngresadas"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:flexWrap="wrap"
+                app:alignItems="center"
+                app:justifyContent="center">
+            </com.google.android.flexbox.FlexboxLayout>
+        </LinearLayout>
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

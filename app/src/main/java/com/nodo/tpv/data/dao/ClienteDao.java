@@ -45,4 +45,9 @@ public interface ClienteDao {
     @Query("SELECT idMesa FROM cliente WHERE idCliente = :idCliente LIMIT 1")
     int obtenerMesaDelCliente(int idCliente);
 
+    @Query("SELECT cliente.*, " +
+            "COALESCE((SELECT SUM(cantidad * precioEnVenta) FROM detalle_pedido WHERE idCliente = cliente.idCliente), 0) as saldoTotal " +
+            "FROM cliente WHERE idMesa = :idMesa")
+    LiveData<List<ClienteConSaldo>> obtenerClientesPorMesaLive(int idMesa);
+
 }

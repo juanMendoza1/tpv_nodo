@@ -4,12 +4,16 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F5F5F5"
-    android:padding="24dp">
+    android:paddingLeft="32dp"
+    android:paddingRight="32dp"
+    android:paddingTop="24dp"
+    android:paddingBottom="16dp">
 
     <LinearLayout
         android:id="@+id/headerLayout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
         android:orientation="vertical">
 
         <TextView
@@ -32,6 +36,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
+        android:layout_marginTop="4dp"
         android:orientation="horizontal">
 
         <com.google.android.material.button.MaterialButton
@@ -49,7 +54,7 @@
             style="@style/Widget.MaterialComponents.Button.TextButton.Icon"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="16dp"
             android:text="PANTALLA"
             android:textColor="#1976D2"
             app:icon="@drawable/ic_fullscreen"
@@ -63,6 +68,7 @@
         android:layout_below="@id/headerLayout"
         android:layout_marginTop="24dp"
         android:clipToPadding="false"
+        android:paddingBottom="24dp"
         android:scrollbars="vertical" />
 
 </RelativeLayout>

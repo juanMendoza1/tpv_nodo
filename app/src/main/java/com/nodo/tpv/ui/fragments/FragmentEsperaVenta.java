@@ -56,40 +56,34 @@ public class FragmentEsperaVenta extends Fragment {
         btnExpandir.setOnClickListener(v -> {
             isExpanded = !isExpanded;
             if (requireActivity() instanceof MainActivity) {
-                ((MainActivity) requireActivity()).setExpandirContenedor(isExpanded);
-
-                // Cambiar texto según el estado
-                btnExpandir.setText(isExpanded ? "CONTRAER" : "EXPANDIR");
+                ((MainActivity) requireActivity()).setExpandirContenedor(isExpanded); // Ajustado al método que definimos antes
+                btnExpandir.setText(isExpanded ? "CONTRAER" : "FULL HUD");
             }
         });
-        //btnExpandir.animate().rotation(isExpanded ? 360f : 0f).setDuration(600).start();
 
-        // 2. Lógica de Habilitar Mesa (Trasladada de FragmentSesion)
+        // 2. 🔥 NUEVA LÓGICA: Agregar mesas dinámicamente al local
         btnHabilitarDirecto.setOnClickListener(v -> {
-            SessionManager sessionManager = new SessionManager(requireContext());
-            Usuario user = sessionManager.obtenerUsuario();
-            if (user != null) {
-                mostrarDialogoEpicHabilitar(user);
-            } else {
-                Toast.makeText(getContext(), "Inicie sesión primero", Toast.LENGTH_SHORT).show();
-            }
+            agregarNuevaMesaAlLocal();
         });
 
+        // 3. Disparamos la carga inicial
         cargarMesas();
     }
 
-    // --- LÓGICA DE CARGA Y DATOS ---
+    // --- LÓGICA DE CARGA Y CREACIÓN AUTOMÁTICA ---
 
     private void cargarMesas() {
         executorService.execute(() -> {
             List<Mesa> mesas = AppDatabase.getInstance(requireContext()).mesaDao().obtenerTodasLasMesas();
 
+            // 🔥 ELIMINAMOS LA AUTO-CREACIÓN AQUÍ.
+            // Si la lista está vacía, simplemente mostrará el RecyclerView vacío
+            // hasta que el usuario presione "NUEVA MESA".
+
             if (getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
                     MesaAdapter adapter = new MesaAdapter(mesas, mesa -> {
                         if (!"ABIERTO".equalsIgnoreCase(mesa.estado)) {
-                            // En lugar de habilitar por clic, podrías usar el botón superior
-                            // o permitirlo también por aquí:
                             mostrarDialogoHabilitarMesa(mesa);
                         } else {
                             abrirGestionMesa(mesa);
@@ -99,7 +93,7 @@ public class FragmentEsperaVenta extends Fragment {
                     adapter.setOnMesaLongClickListener(this::validarCierreMesa);
                     rvMesas.setAdapter(adapter);
 
-                    // Carga de saldos Matrix en tiempo real
+                    // Carga de saldos en tiempo real para mesas abiertas
                     for (Mesa m : mesas) {
                         if ("ABIERTO".equalsIgnoreCase(m.estado)) {
                             executorService.execute(() -> {
@@ -114,6 +108,42 @@ public class FragmentEsperaVenta extends Fragment {
                 });
             }
         });
+    }
+
+    // --- NUEVO: MÉTODO PARA CREAR UNA MESA EXTRA (Ej: Mesa 7, Mesa 8...) ---
+    private void agregarNuevaMesaAlLocal() {
+        new MaterialAlertDialogBuilder(requireContext(), R.style.MaterialAlertDialog_Rounded)
+                .setTitle("🛠 Instalar Nueva Mesa")
+                .setMessage("¿Deseas agregar una nueva mesa física al panel de control?")
+                .setPositiveButton("AGREGAR", (dialog, which) -> {
+                    executorService.execute(() -> {
+                        List<Mesa> mesasActuales = AppDatabase.getInstance(requireContext()).mesaDao().obtenerTodasLasMesas();
+
+                        // Calculamos cuál es el ID más alto actualmente para sumar 1
+                        int maxId = 0;
+                        for (Mesa m : mesasActuales) {
+                            if (m.idMesa > maxId) maxId = m.idMesa;
+                        }
+
+                        int nuevoId = maxId + 1;
+
+                        Mesa nuevaMesa = new Mesa();
+                        nuevaMesa.idMesa = nuevoId;
+                        nuevaMesa.estado = "CERRADA";
+                        nuevaMesa.tipoJuego = "POOL";
+
+                        AppDatabase.getInstance(requireContext()).mesaDao().insertarMesa(nuevaMesa);
+
+                        if (getActivity() != null) {
+                            getActivity().runOnUiThread(() -> {
+                                Toast.makeText(getContext(), "Mesa #" + nuevoId + " instalada con éxito", Toast.LENGTH_SHORT).show();
+                                cargarMesas(); // Refresca la grilla al instante
+                            });
+                        }
+                    });
+                })
+                .setNegativeButton("CANCELAR", null)
+                .show();
     }
 
     // --- LÓGICA DE CIERRE (CANDADO DE SEGURIDAD) ---
@@ -165,36 +195,12 @@ public class FragmentEsperaVenta extends Fragment {
         });
     }
 
-    // --- LÓGICA DE HABILITACIÓN (MODO EPIC) ---
+    // --- LÓGICA DE HABILITACIÓN ---
 
-    private void mostrarDialogoEpicHabilitar(Usuario user) {
-        View v = getLayoutInflater().inflate(R.layout.dialog_seleccion_modalidad, null);
-        AlertDialog dialog = new MaterialAlertDialogBuilder(requireContext(), R.style.MaterialAlertDialog_Rounded)
-                .setView(v).create();
-
-        // Animación de entrada
-        v.setAlpha(0f);
-        v.setScaleX(0.8f);
-        v.animate().alpha(1f).scaleX(1f).setDuration(300).start();
-
-        v.findViewById(R.id.cardModoPool).setOnClickListener(view -> {
-            procederAAbrirMesaManual(user.idMesa, "POOL");
-            dialog.dismiss();
-        });
-
-        v.findViewById(R.id.cardModoBillar).setOnClickListener(view -> {
-            procederAAbrirMesaManual(user.idMesa, "3BANDAS");
-            dialog.dismiss();
-        });
-
-        dialog.show();
-    }
-
-    // Para habilitar una mesa específica al hacerle clic
     private void mostrarDialogoHabilitarMesa(Mesa mesa) {
-        String[] opciones = {"🎱 POOL", "⏱ 3 BANDAS"};
-        new MaterialAlertDialogBuilder(requireContext())
-                .setTitle("HABILITAR MESA " + mesa.idMesa)
+        String[] opciones = {"🎱 POOL (Bola 8/9)", "⏱ 3 BANDAS (Tiempo)"};
+        new MaterialAlertDialogBuilder(requireContext(), R.style.MaterialAlertDialog_Rounded)
+                .setTitle("DESPLEGAR MESA " + mesa.idMesa)
                 .setItems(opciones, (dialog, which) -> {
                     procederAAbrirMesaManual(mesa.idMesa, (which == 0) ? "POOL" : "3BANDAS");
                 }).show();
@@ -202,10 +208,8 @@ public class FragmentEsperaVenta extends Fragment {
 
     private void procederAAbrirMesaManual(int idMesa, String modo) {
         executorService.execute(() -> {
-            // 1. Buscamos la mesa
             Mesa mesaExistente = AppDatabase.getInstance(requireContext()).mesaDao().obtenerMesaPorId(idMesa);
 
-            // 2. Creamos una instancia final o que no se reasigne
             Mesa mesaParaProcesar;
             if (mesaExistente == null) {
                 mesaParaProcesar = new Mesa();
@@ -214,20 +218,17 @@ public class FragmentEsperaVenta extends Fragment {
                 mesaParaProcesar = mesaExistente;
             }
 
-            // 3. Seteamos los valores
             mesaParaProcesar.estado = "ABIERTO";
             mesaParaProcesar.tipoJuego = modo;
             mesaParaProcesar.fechaApertura = System.currentTimeMillis();
 
-            // 4. Guardamos en BD
             AppDatabase.getInstance(requireContext()).mesaDao().insertarMesa(mesaParaProcesar);
 
-            // 5. Para el hilo de UI, la variable mesaParaProcesar ahora es "efectivamente final"
             if (getActivity() != null) {
                 getActivity().runOnUiThread(() -> {
-                    Toast.makeText(getContext(), "Mesa #" + idMesa + " iniciada (" + modo + ")", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Mesa #" + idMesa + " en línea (" + modo + ")", Toast.LENGTH_SHORT).show();
                     cargarMesas();
-                    abrirGestionMesa(mesaParaProcesar); // Ahora funciona sin errores
+                    abrirGestionMesa(mesaParaProcesar);
                 });
             }
         });
@@ -250,8 +251,6 @@ public class FragmentEsperaVenta extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        // 🔥 FORZAR ESTADO AL REGRESAR:
-        // Si isExpanded es true, ocultamos el 30% inmediatamente al volver.
         if (requireActivity() instanceof MainActivity) {
             ((MainActivity) requireActivity()).setExpandirContenedor(isExpanded);
         }

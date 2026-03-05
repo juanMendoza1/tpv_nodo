@@ -227,7 +227,7 @@ public class ListaClientesFragment extends Fragment {
             }
         });
 
-        clienteViewModel.getClientesActivos().observe(getViewLifecycleOwner(), clientes -> {
+        clienteViewModel.getClientesPorMesa(idMesaActual).observe(getViewLifecycleOwner(), clientes -> {
             if (clientes == null || clientes.isEmpty()) {
                 tvEmpty.setVisibility(View.VISIBLE);
                 recyclerView.setVisibility(View.GONE);
@@ -354,7 +354,11 @@ public class ListaClientesFragment extends Fragment {
         AlertDialog d = new MaterialAlertDialogBuilder(requireContext()).setView(dv).setOnDismissListener(dialog -> fabMain.show()).create();
         dv.findViewById(R.id.btnGuardar).setOnClickListener(v -> {
             String a = etA.getText().toString().trim();
-            if (!a.isEmpty()) { clienteViewModel.guardarCliente(a, act.getText().toString()); d.dismiss(); }
+            if (!a.isEmpty()) {
+                // 🔥 Ahora pasamos idMesaActual al guardar
+                clienteViewModel.guardarCliente(a, act.getText().toString(), idMesaActual);
+                d.dismiss();
+            }
         });
         d.show();
     }

@@ -313,52 +313,67 @@
 
 
                     <LinearLayout
-
                         android:id="@+id/layoutComandos"
-
                         android:layout_width="match_parent"
-
                         android:layout_height="wrap_content"
-
                         android:orientation="vertical"
+                        android:gravity="center"
+                        android:visibility="gone"
+                        android:paddingTop="16dp"
+                        android:paddingBottom="8dp">
 
-                        android:visibility="gone">
-
-
+                        <FrameLayout
+                            android:layout_width="64dp"
+                            android:layout_height="64dp"
+                            android:layout_marginBottom="16dp"
+                            android:background="@drawable/bg_circle_light"
+                            android:elevation="4dp"> <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_person"
+                            app:tint="@color/cyan_neon" />
+                        </FrameLayout>
 
                         <TextView
-
-                            android:id="@+id/tvUsuarioActivo"
-
-                            android:layout_width="match_parent"
-
+                            android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:text="OPERARIO"
+                            android:textColor="#90A4AE"
+                            android:textSize="10sp"
+                            android:fontFamily="sans-serif-medium"
+                            android:letterSpacing="0.15"
+                            android:layout_marginBottom="4dp"/>
 
+                        <TextView
+                            android:id="@+id/tvUsuarioActivo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
                             android:textAlignment="center"
-
-                            android:textColor="#2E7D32"
-
-                            android:textSize="22sp"
-
-                            android:textStyle="bold" />
-
-
+                            android:textColor="#1B5E20"
+                            android:textSize="12sp"
+                            android:fontFamily="sans-serif-black"
+                            android:letterSpacing="0.05"
+                            android:layout_marginBottom="18dp" />
 
                         <com.google.android.material.button.MaterialButton
-
                             android:id="@+id/btnCerrarSesion"
-
-                            style="@style/Widget.MaterialComponents.Button.TextButton"
-
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                             android:layout_width="match_parent"
-
-                            android:layout_height="wrap_content"
-
-                            android:layout_marginTop="16dp"
-
-                            android:text="CERRAR TURNO"
-
-                            android:textColor="#D32F2F" />
+                            android:layout_height="64dp"
+                            android:text="SALIR"
+                            android:textColor="#FF1744"
+                            android:textSize="8sp"
+                            android:textStyle="bold"
+                            android:fontFamily="sans-serif-condensed"
+                            android:letterSpacing="0.1"
+                            app:strokeColor="#FF1744"
+                            app:strokeWidth="2dp"
+                            app:cornerRadius="20dp"
+                            app:rippleColor="#33FF1744"
+                            app:icon="@drawable/ic_exit_to_app"
+                            app:iconGravity="textStart"
+                            app:iconTint="#FF1744" />
 
                     </LinearLayout>
 
