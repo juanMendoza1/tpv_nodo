@@ -7,6 +7,12 @@ android {
     compileSdk 36
     // Ajustado a la versión estable actual
 
+    // 🔥 AQUI VAN TODAS LAS CARACTERÍSTICAS DE COMPILACIÓN
+    buildFeatures {
+        buildConfig = true
+        viewBinding = true // Movido aquí, es la forma correcta actual
+    }
+
     defaultConfig {
         applicationId "com.nodo.tpv"
         minSdk 24
@@ -15,10 +21,19 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // URL por defecto (por seguridad)
+        buildConfigField "String", "BASE_URL", "\"http://10.44.11.68:8080/\""
     }
 
     buildTypes {
+        debug {
+            // ENTORNO DE DESARROLLO (Tu PC Local / Pruebas / Emulador)
+            buildConfigField "String", "BASE_URL", "\"http://10.44.11.68:8080/\""
+        }
         release {
+            // ENTORNO DE PRODUCCIÓN (El servidor real del billar)
+            buildConfigField "String", "BASE_URL", "\"http://192.168.1.56:8080/\""
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -27,11 +42,6 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
-    }
-
-    // RECOMENDADO: Facilita el manejo de los +50 elementos de tu Arena
-    viewBinding {
-        enabled = true
     }
 }
 
@@ -42,7 +52,7 @@ dependencies {
     implementation libs.activity
     implementation libs.constraintlayout
 
-    // UI y Material Design (Versión única y estable)
+    // UI y Material Design
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'com.google.android.flexbox:flexbox:3.0.0'
 
@@ -61,6 +71,7 @@ dependencies {
     implementation "androidx.camera:camera-camera2:${camerax_version}"
     implementation "androidx.camera:camera-lifecycle:${camerax_version}"
     implementation "androidx.camera:camera-view:${camerax_version}"
+
     // VITAL para manejar los Listeners de la cámara sin errores
     implementation "com.google.guava:guava:31.1-android"
 
@@ -68,6 +79,8 @@ dependencies {
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.9.3'
+
+    // Escáner QR
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'com.google.mlkit:barcode-scanning:17.3.0'
 
@@ -85,18 +98,17 @@ dependencies {
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
 
+    // Tareas en segundo plano
     def work_version = "2.9.0"
     implementation "androidx.work:work-runtime:$work_version"
 
+    // Seguridad
     implementation 'org.mindrot:jbcrypt:0.4'
 
+    // Unidades de medida dinámicas para pantallas de tablets
     implementation 'com.intuit.sdp:sdp-android:1.1.0'
     implementation 'com.intuit.ssp:ssp-android:1.1.0'
 
+    // Exoplayer para videos
     implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
-// O si usas la nueva versión Media3 (recomendado):
-// implementation 'androidx.media3:media3-exoplayer:1.2.0'
-// implementation 'androidx.media3:media3-ui:1.2.0'
-// implementation 'androidx.media3:media3-exoplayer-rtsp:1.2.0'
-
 }

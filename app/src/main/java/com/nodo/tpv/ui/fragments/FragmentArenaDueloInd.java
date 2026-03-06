@@ -114,6 +114,16 @@ public class FragmentArenaDueloInd extends Fragment {
         return f;
     }
 
+    public static FragmentArenaDueloInd newInstance(ArrayList<Integer> idsSeleccionados, int idMesa) {
+        FragmentArenaDueloInd fragment = new FragmentArenaDueloInd();
+        Bundle args = new Bundle();
+        // Usamos putIntegerArrayList en lugar de objetos serializables/parcelables
+        args.putIntegerArrayList("ids_clientes", idsSeleccionados);
+        args.putInt("id_mesa", idMesa);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -134,12 +144,31 @@ public class FragmentArenaDueloInd extends Fragment {
         productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
         clienteViewModel = new ViewModelProvider(requireActivity()).get(ClienteViewModel.class);
 
-        // 1. Recuperar participantes
-        if (participantes == null || participantes.isEmpty()) {
-            participantes = productoViewModel.getIntegrantesAzulCacheados();
+        // --- 1. RECUPERAR LOS IDs DESDE EL BUNDLE ---
+        ArrayList<Integer> idsClientes = new ArrayList<>();
+        if (getArguments() != null) {
+            idMesaActual = getArguments().getInt("id_mesa");
+            if (getArguments().containsKey("ids_clientes")) {
+                idsClientes = getArguments().getIntegerArrayList("ids_clientes");
+            }
         }
 
-        // 2. Vincular Vistas principales
+        // --- 2. INICIAR DUELO DE FORMA ASÍNCRONA ---
+        // Le pasamos los IDs al ViewModel. Él los buscará en BD y nos avisará cuando termine.
+        if (idsClientes != null && !idsClientes.isEmpty()) {
+            productoViewModel.iniciarDueloIndPersistente(idsClientes, idMesaActual);
+        }
+
+        // --- 3. OBSERVAR CUANDO LOS CLIENTES ESTÉN LISTOS ---
+        // Como la carga es asíncrona, esperamos al dbTrigger para pintar la UI
+        productoViewModel.getDbTrigger().observe(getViewLifecycleOwner(), trigger -> {
+            participantes = productoViewModel.getIntegrantesAzulCacheados();
+            if (participantes != null && !participantes.isEmpty()) {
+                setupMiniMarcadores(view); // Pintamos las burbujas solo cuando ya tenemos los datos
+            }
+        });
+
+        // 4. Vincular Vistas principales
         lottieCelebration = view.findViewById(R.id.lottieCelebration);
         tvValorEnJuego = view.findViewById(R.id.tvProductoEnJuego);
         tvItemsBolsa = view.findViewById(R.id.tvItemsBolsa);
@@ -152,7 +181,7 @@ public class FragmentArenaDueloInd extends Fragment {
         rvRecluta = view.findViewById(R.id.rvReclutamiento);
         btnConfirmarRecluta = view.findViewById(R.id.btnConfirmarRecluta);
 
-        // 3. Vincular Panel de Liquidación Individual (Nuevo)
+        // 5. Vincular Panel de Liquidación Individual (Nuevo)
         panelLiquidacion = view.findViewById(R.id.panelLiquidacionIndividual);
         rvResumenSalida = view.findViewById(R.id.rvDuelosIndividualLiq);
 
@@ -209,16 +238,10 @@ public class FragmentArenaDueloInd extends Fragment {
         view.findViewById(R.id.btnConfirmarSalidaLiq).setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
             if (clienteEnLiquidacion != null) {
-                // 1. Persistencia: Marcar estado FINALIZADO en DB
                 productoViewModel.retirarJugadorEspecificoInd(idMesaActual, clienteEnLiquidacion.idCliente);
-
-                // 2. Limpiar timer local
                 startTimesMap.remove(clienteEnLiquidacion.idCliente);
-
-                // 3. Animación de salida
                 togglePanelLiquidacion(null, false);
 
-                // 4. Refrescar la Arena (esperamos un poco a la DB)
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
                     participantes = productoViewModel.getIntegrantesAzulCacheados();
                     setupMiniMarcadores(getView());
@@ -232,6 +255,10 @@ public class FragmentArenaDueloInd extends Fragment {
         // --- LÓGICA DEL BOTÓN LOG (HISTORIAL AGRUPADO ARENA) ---
         view.findViewById(R.id.btnVerLog).setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+
+            // Evitamos que falle si participantes aún es null al tocar el botón muy rápido
+            if (participantes == null) return;
+
             Map<Integer, Integer> mapaColoresInd = new HashMap<>();
             for (int i = 0; i < participantes.size(); i++) {
                 mapaColoresInd.put(participantes.get(i).idCliente, COLORES_NEON[i % COLORES_NEON.length]);
@@ -320,10 +347,9 @@ public class FragmentArenaDueloInd extends Fragment {
         btnConfirmarRecluta.setOnClickListener(v -> ejecutarCargaPro());
         view.findViewById(R.id.btnCancelarRecluta).setOnClickListener(v -> togglePanelRecluta(false));
 
-        setupMiniMarcadores(view);
+        // IMPORTANTE: Eliminamos setupMiniMarcadores(view) e iniciarDuelo de aquí abajo
         setupObservadores();
         startGlobalTimer();
-        productoViewModel.iniciarDueloIndPersistente(participantes, idMesaActual);
     }
 
     private void abrirPanelReclutamientoPro() {

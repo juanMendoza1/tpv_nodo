@@ -265,7 +265,19 @@ public class ListaClientesFragment extends Fragment {
                 productoViewModel.guardarIntegrantesDuelo(equipoAzul, new ArrayList<>());
                 participantesParaArena = equipoAzul;
             }
-            fragmentArena = FragmentArenaDueloInd.newInstance(participantesParaArena, idMesaActual);
+
+            // --- 👇 ESTA ES LA MAGIA: Extraer solo los IDs 👇 ---
+            ArrayList<Integer> idsClientes = new ArrayList<>();
+            if (participantesParaArena != null) {
+                for (Cliente c : participantesParaArena) {
+                    idsClientes.add(c.idCliente);
+                }
+            }
+
+            // Llamamos al Fragment pasando solo el arreglo de IDs
+            fragmentArena = FragmentArenaDueloInd.newInstance(idsClientes, idMesaActual);
+            // ---------------------------------------------------
+
         } else {
             // Lógica para POOL / GRUPAL
             Boolean dueloActivo = productoViewModel.getEnModoDuelo().getValue();

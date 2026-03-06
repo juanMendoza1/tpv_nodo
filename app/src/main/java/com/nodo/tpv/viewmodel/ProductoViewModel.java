@@ -32,6 +32,9 @@ import com.nodo.tpv.data.entities.PerfilDueloInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.entities.VentaDetalleHistorial;
 import com.nodo.tpv.data.entities.VentaHistorial;
+import com.nodo.tpv.data.repository.DueloRepository;
+import com.nodo.tpv.data.repository.PedidoRepository;
+import com.nodo.tpv.data.repository.ProductoRepository;
 import com.nodo.tpv.data.sync.StockSyncWorker;
 
 import java.math.BigDecimal;
@@ -50,6 +53,9 @@ import retrofit2.Response;
 
 public class ProductoViewModel extends AndroidViewModel {
     private final AppDatabase db;
+    private final ProductoRepository productoRepository;
+    private final DueloRepository dueloRepository;
+    private final PedidoRepository pedidoRepository;
     private final MutableLiveData<Long> dbTrigger = new MutableLiveData<>(System.currentTimeMillis());
     private final ExecutorService executorService = Executors.newFixedThreadPool(4);
     private final Handler mainThreadHandler = new Handler(Looper.getMainLooper());
@@ -92,7 +98,10 @@ public class ProductoViewModel extends AndroidViewModel {
 
     public ProductoViewModel(@NonNull Application application) {
         super(application);
-        db = AppDatabase.getInstance(application);
+        db = AppDatabase.getInstance(application); // Lo mantienes de momento para otros DAOs
+        productoRepository = new ProductoRepository(application); // Inicializamos
+        dueloRepository = new DueloRepository(application);
+        pedidoRepository = new PedidoRepository(application);
     }
 
     private final MutableLiveData<Map<Integer, Integer>> scoresEquipos = new MutableLiveData<>(new HashMap<>());
@@ -167,16 +176,19 @@ public class ProductoViewModel extends AndroidViewModel {
 
     public void setMetaCarambolasInd(int meta) { metaCarambolasInd.postValue(meta); }
 
-    public void iniciarDueloIndPersistente(List<Cliente> clientes, int idMesa) {
-        // 1. Preparación inmediata de la caché en memoria para la UI
+    public void iniciarDueloIndPersistente(List<Integer> idsClientes, int idMesa) {
+
+        // 1. Preparación inmediata de estado básico en UI
         this.idMesaActual = idMesa;
-        this.integrantesAzulCacheados = new ArrayList<>(clientes);
         this.tipoJuegoActual.postValue("3BANDAS");
         this.enModoDuelo.postValue(true);
 
         executorService.execute(() -> {
-            // 2. RECUPERAR O GENERAR EL UUID DEL DUELO
-            // Es vital que uuidDueloActual tenga valor antes de disparar el dbTrigger
+            // 2. BUSCAR LOS OBJETOS CLIENTE REALES EN LA BASE DE DATOS
+            // Usamos la nueva consulta que agregaste en ClienteDao
+            List<Cliente> clientesReales = db.clienteDao().obtenerClientesPorIds(idsClientes);
+
+            // 3. RECUPERAR O GENERAR EL UUID DEL DUELO
             String uuidExistente = db.dueloDao().obtenerUuidDueloActivoIndPorMesa(idMesa);
             if (uuidExistente != null) {
                 this.uuidDueloActual = uuidExistente;
@@ -184,12 +196,11 @@ public class ProductoViewModel extends AndroidViewModel {
                 this.uuidDueloActual = UUID.randomUUID().toString();
             }
 
-            // 3. PERSISTENCIA INDIVIDUAL DE JUGADORES
-            for (Cliente c : clientes) {
+            // 4. PERSISTENCIA INDIVIDUAL DE JUGADORES
+            for (Cliente c : clientesReales) {
                 DueloTemporalInd existente = db.dueloTemporalIndDao().obtenerEstadoCliente(idMesa, c.idCliente);
 
                 if (existente == null) {
-                    // Si es nuevo en la mesa, creamos su registro con su propio tiempo de entrada
                     DueloTemporalInd nuevo = new DueloTemporalInd(
                             this.uuidDueloActual,
                             idMesa,
@@ -202,9 +213,12 @@ public class ProductoViewModel extends AndroidViewModel {
                 }
             }
 
-            // 4. NOTIFICACIÓN FINAL A LA UI
+            // 5. NOTIFICACIÓN FINAL A LA UI
             mainThreadHandler.post(() -> {
-                // Esto dispara todos los observadores del Fragment (Bolsa, Badge, Cronómetros)
+                // Guardamos los clientes reales en caché para que la UI pueda pintar sus nombres
+                this.integrantesAzulCacheados = new ArrayList<>(clientesReales);
+
+                // Disparamos el observador para pintar las burbujas en el Fragment
                 this.dbTrigger.setValue(System.currentTimeMillis());
                 Log.d("ARENA_DUELO", "Duelo Individual iniciado/recuperado: " + this.uuidDueloActual);
             });
@@ -412,54 +426,8 @@ public class ProductoViewModel extends AndroidViewModel {
 
     // --- CIERRE DE CUENTA E HISTORIAL ---
     public void finalizarCuenta(int id, String alias, String metodo, String fotoBase64) {
-        executorService.execute(() -> {
-            // 1. Obtener los datos actuales del cliente antes de borrarlos
-            BigDecimal total = db.detallePedidoDao().obtenerTotalDirecto(id);
-            List<DetalleConNombre> consumos = db.detallePedidoDao().obtenerDetalleConNombresSincrono(id);
-
-            // 2. Validar que existan consumos para procesar la venta
-            if (total != null && total.compareTo(BigDecimal.ZERO) > 0 && consumos != null) {
-
-                // --- PASO A: Crear la Venta Principal (Padre) ---
-                VentaHistorial vH = new VentaHistorial();
-                vH.idCliente = id;
-                vH.nombreCliente = alias;
-                vH.montoTotal = total;
-                vH.metodoPago = metodo;
-                vH.fechaLong = System.currentTimeMillis();
-                vH.estado = "PENDIENTE"; // Crítico para auditoría posterior
-                vH.fotoComprobante = fotoBase64; // String Base64 capturado
-
-                // Insertamos y recuperamos el ID autogenerado
-                long idVentaPadre = db.detallePedidoDao().insertarVentaHistorial(vH);
-
-                // --- PASO B: Migrar detalles al historial ---
-                List<VentaDetalleHistorial> listaDetallesHistorial = new ArrayList<>();
-
-                for (DetalleConNombre item : consumos) {
-                    VentaDetalleHistorial vDet = new VentaDetalleHistorial();
-                    vDet.idVentaPadre = (int) idVentaPadre;
-                    vDet.nombreProducto = item.nombreProducto;
-                    vDet.cantidad = item.detallePedido.cantidad;
-                    vDet.precioUnitario = item.detallePedido.precioEnVenta;
-
-                    // Mapear si es apuesta
-                    // Asumiendo que DetallePedido tiene el campo esApuesta
-                    vDet.esApuesta = item.detallePedido.esApuesta;
-
-                    listaDetallesHistorial.add(vDet);
-                }
-
-                // Insertar todos los detalles en bloque para optimizar la DB
-                db.detallePedidoDao().insertarDetallesHistorial(listaDetallesHistorial);
-
-                // --- PASO C: Limpiar datos temporales ---
-                db.detallePedidoDao().borrarCuentaCliente(id);
-                db.clienteDao().eliminarPorId(id);
-
-                // Notificar a la UI para refrescar pantallas
-                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
-            }
+        pedidoRepository.finalizarCuenta(id, alias, metodo, fotoBase64, () -> {
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 
@@ -492,44 +460,29 @@ public class ProductoViewModel extends AndroidViewModel {
     }*/
 
     public void finalizarDueloCompleto(int idMesa, String tipoJuego) {
-        executorService.execute(() -> {
-            // 1. Limpieza en Base de Datos diferenciada
-            if ("POOL".equals(tipoJuego)) {
-                // Finaliza registros en la tabla duelos_temporales
-                db.dueloDao().finalizarDueloPorMesa(idMesa);
-            } else if ("3BANDAS".equals(tipoJuego)) {
-                // Finaliza registros en la tabla duelos_temporales_ind usando el ID real
-                db.dueloTemporalIndDao().finalizarDueloMesa(idMesa);
-            }
-
+        Runnable limpiezaInterfazCallback = () -> {
             mainThreadHandler.post(() -> {
-                // 2. Control de Estado General
                 enModoDuelo.setValue(false);
                 uuidDueloActual = null;
                 tiempoInicioDuelo.setValue(0L);
-
-                // 3. Limpieza de Arena Dinámica (POOL MULTIEQUIPO)
                 mapaColoresDuelo.setValue(new HashMap<>());
                 scoresEquipos.setValue(new HashMap<>());
-
-                // 4. Limpieza de Arena Clásica y Caché de integrantes
                 scoreAzul.setValue(0);
                 scoreRojo.setValue(0);
                 if (integrantesAzulCacheados != null) integrantesAzulCacheados.clear();
                 if (integrantesRojoCacheados != null) integrantesRojoCacheados.clear();
-
-                // 5. Limpieza de Arena 3 BANDAS (Score Individual)
                 scoresIndividualesInd.setValue(new HashMap<>());
-
-                // 6. Limpieza de Bolsa de munición/apuesta
                 limpiarApuesta();
-
-                // 7. Gatillo de actualización global (Refresca Badge, Listas y Botones)
                 dbTrigger.setValue(System.currentTimeMillis());
-
-                Log.d("ARENA_FINISH", "Duelo " + tipoJuego + " en Mesa #" + idMesa + " finalizado correctamente.");
             });
-        });
+        };
+
+        // 👇 El repositorio decide qué tabla limpiar según el juego
+        if ("POOL".equals(tipoJuego)) {
+            dueloRepository.finalizarDueloPool(idMesa, limpiezaInterfazCallback);
+        } else if ("3BANDAS".equals(tipoJuego)) {
+            dueloRepository.finalizarDueloIndividual(idMesa, limpiezaInterfazCallback);
+        }
     }
 
     // --- MÉTODOS DE APOYO Y PRODUCTOS ---
@@ -607,30 +560,9 @@ public class ProductoViewModel extends AndroidViewModel {
         this.uuidDueloActual = UUID.randomUUID().toString();
         this.tiempoInicioDuelo.postValue(System.currentTimeMillis());
 
-        executorService.execute(() -> {
-            try {
-                db.dueloDao().borrarDueloFallidoPorMesa(idMesa);
-
-                for (Map.Entry<Integer, Integer> entry : copiaSeleccion.entrySet()) {
-                    int idCliente = entry.getKey();
-                    int colorAsignado = entry.getValue();
-
-                    // 🔥 Pasamos el idMesa al constructor actualizado
-                    DueloTemporal dt = new DueloTemporal(
-                            uuidDueloActual,
-                            colorAsignado,
-                            idCliente,
-                            "ACTIVO",
-                            idMesa
-                    );
-
-                    db.dueloDao().insertarParticipante(dt);
-                }
-
-                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
-            } catch (Exception e) {
-                Log.e("DUELO_ERROR", "Error al insertar participantes", e);
-            }
+        // 👇 Todo el trabajo sucio se va al Repositorio. Solo manejamos el Callback.
+        dueloRepository.prepararDueloPoolMultiequipo(uuidDueloActual, copiaSeleccion, idMesa, () -> {
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 
@@ -876,7 +808,7 @@ public class ProductoViewModel extends AndroidViewModel {
      * Se usa para el Badge (notificación) de la esquina superior izquierda.
      */
     public LiveData<Integer> observarConteoPendientesMesa(int idMesa) {
-        return db.detallePedidoDao().observarConteoPendientesMesa(idMesa);
+        return pedidoRepository.observarConteoPendientesMesa(idMesa);
     }
 
 
@@ -899,13 +831,9 @@ public class ProductoViewModel extends AndroidViewModel {
     }
 
     public void marcarComoEntregado(int idDetalle, int idUsuario, String loginOperativo) {
-        executorService.execute(() -> {
-            // 1. Marcamos localmente como ENTREGADO (sincronizado sigue en 0 por defecto)
-            db.detallePedidoDao().despacharPedidoLocal(idDetalle, "ENTREGADO", idUsuario);
-
-            // 2. Encolamos el Worker para que revise todo lo que tenga sincronizado = 0
+        pedidoRepository.marcarComoEntregadoLocal(idDetalle, idUsuario, () -> {
+            // Disparamos el Worker de sincronización como lo tenías antes
             dispararSincronizacion();
-
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
@@ -944,45 +872,12 @@ public class ProductoViewModel extends AndroidViewModel {
     }
 
     public LiveData<List<DetalleHistorialDuelo>> obtenerSoloPendientesMesa(int idMesa) {
-        return db.detallePedidoDao().obtenerSoloPendientesMesa(idMesa);
+        return pedidoRepository.obtenerSoloPendientesMesa(idMesa);
     }
 
     public void insertarMunicionDueloPendiente(int idMesa, Producto producto, int cantidad) {
-        executorService.execute(() -> {
-            // 1. Intentamos obtener el UUID de la variable en memoria
-            String uuid = this.uuidDueloActual;
-
-            // 2. Si es null (por reinicio), buscamos en la tabla de 3 BANDAS primero
-            if (uuid == null) {
-                // Buscamos en la tabla que mostraste en tu imagen (duelos_temporales_ind)
-                // Necesitas agregar este Query en tu DueloTemporalIndDao si no lo tienes
-                uuid = db.dueloTemporalIndDao().obtenerIdDueloPorMesaSincrono(idMesa);
-            }
-
-            // 3. Si sigue siendo null, buscamos en la tabla de POOL
-            if (uuid == null) {
-                uuid = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesa);
-            }
-
-            if (uuid == null) {
-                mainThreadHandler.post(() -> Log.e("ERROR_VINCULO", "No se encontró un duelo activo para vincular el pedido"));
-                return;
-            }
-
-            for (int i = 0; i < cantidad; i++) {
-                DetallePedido dp = new DetallePedido();
-                dp.idProducto = producto.idProducto;
-                dp.idMesa = idMesa;
-                dp.idDueloOrigen = uuid; // 🔥 AHORA SÍ TIENE EL ID DE TU IMAGEN
-                dp.precioEnVenta = producto.getPrecioProducto();
-                dp.cantidad = 1;
-                dp.idCliente = 0; // Bolsa
-                dp.estado = "PENDIENTE";
-                dp.esApuesta = true;
-                dp.fechaLong = System.currentTimeMillis();
-                db.detallePedidoDao().insertarDetalle(dp);
-            }
-
+        pedidoRepository.insertarMunicionDueloPendiente(idMesa, producto, cantidad, this.uuidDueloActual, () -> {
+            // Callback: Avisar a la UI
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
@@ -1008,9 +903,7 @@ public class ProductoViewModel extends AndroidViewModel {
      * Esto hace que desaparezca del resumen del catálogo y del Badge de la arena.
      */
     public void eliminarDetallePendiente(int idDetalle) {
-        executorService.execute(() -> {
-            db.detallePedidoDao().cancelarDetallePorId(idDetalle);
-            // Notificamos a la UI para que el resumen del catálogo y el Badge se refresquen
+        pedidoRepository.cancelarDetallePendiente(idDetalle, () -> {
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
@@ -1019,9 +912,7 @@ public class ProductoViewModel extends AndroidViewModel {
      * Cancela toda la munición que aún no ha sido entregada para una mesa.
      */
     public void cancelarMunicionPendienteMesa(int idMesa) {
-        executorService.execute(() -> {
-            db.detallePedidoDao().cancelarTodosLosPendientesMesa(idMesa);
-            // Notificamos a la UI para limpiar el resumen y poner el Badge en 0
+        pedidoRepository.cancelarMunicionPendienteMesa(idMesa, () -> {
             mainThreadHandler.post(() -> {
                 dbTrigger.setValue(System.currentTimeMillis());
                 Log.d("LOGISTICA", "Bolsa de mesa " + idMesa + " cancelada.");
@@ -1220,7 +1111,7 @@ public class ProductoViewModel extends AndroidViewModel {
      */
     public LiveData<PerfilDueloInd> getPerfilDueloInd(int idMesa) {
         // Consultamos el perfil vinculado a la mesa actual
-        return db.perfilDueloIndDao().obtenerPerfilPorMesa(idMesa);
+        return dueloRepository.obtenerPerfilPorMesa(idMesa);
     }
 
     /**
@@ -1516,36 +1407,14 @@ public class ProductoViewModel extends AndroidViewModel {
     // En ProductoViewModel.java
 
     public void refrescarStockSilencioso(long empresaId) {
-        // 1. No bloqueamos la UI con loadings.
-        // 2. Pedimos al API los datos frescos.
-        RetrofitClient.getInterface(getApplication()).obtenerProductosPorEmpresa(empresaId)
-                .enqueue(new Callback<List<ProductoDTO>>() {
-                    @Override
-                    public void onResponse(Call<List<ProductoDTO>> call, Response<List<ProductoDTO>> response) {
-                        if (response.isSuccessful() && response.body() != null) {
-                            executorService.execute(() -> {
-                                // Actualizamos Room solo con los cambios
-                                for (ProductoDTO dto : response.body()) {
-                                    db.productoDao().actualizarStockYPrecio(
-                                            dto.id.intValue(),
-                                            dto.stockActual,
-                                            dto.precioVenta
-                                    );
-                                }
-                                // Disparamos el trigger para que el catálogo se refresque visualmente
-                                mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
-                            });
-                        }
-                    }
-                    @Override
-                    public void onFailure(Call<List<ProductoDTO>> call, Throwable t) {
-                        Log.e("SYNC", "Error silencioso: " + t.getMessage());
-                    }
-                });
+        productoRepository.refrescarStockSilencioso(empresaId, () -> {
+            // Callback: Esto se ejecuta cuando el repositorio termina de guardar en Room
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
     }
 
     public LiveData<List<Producto>> getProductosLiveData() {
-        return db.productoDao().obtenerTodosProductosLiveData();
+        return productoRepository.getProductosLiveData();
     }
 
     private final MutableLiveData<Boolean> _eventoVentaExitosa = new MutableLiveData<>();

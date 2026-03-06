@@ -50,4 +50,7 @@ public interface ClienteDao {
             "FROM cliente WHERE idMesa = :idMesa")
     LiveData<List<ClienteConSaldo>> obtenerClientesPorMesaLive(int idMesa);
 
+    @Query("SELECT * FROM cliente WHERE idCliente IN (:ids)")
+    List<Cliente> obtenerClientesPorIds(List<Integer> ids);
+
 }
