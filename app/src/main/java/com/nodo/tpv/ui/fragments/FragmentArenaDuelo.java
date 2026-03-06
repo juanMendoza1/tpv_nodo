@@ -100,6 +100,8 @@ public class FragmentArenaDuelo extends Fragment {
 
     private final java.util.Random random = new java.util.Random();
 
+    private View scrollMarcadores;
+
     public static FragmentArenaDuelo newInstance(List<Cliente> azul, List<Cliente> rojo, String tipoJuego, int idMesa) {
         FragmentArenaDuelo f = new FragmentArenaDuelo();
         Bundle args = new Bundle();
@@ -131,6 +133,7 @@ public class FragmentArenaDuelo extends Fragment {
             ((MainActivity) requireActivity()).setExpandirContenedor(true);
         }
         productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+        scrollMarcadores = view.findViewById(R.id.scrollMarcadores);
 
         // 1. VINCULACIÓN DE ESTRUCTURA Y VIDEO
         layoutContenidoArena = view.findViewById(R.id.layoutContenidoArena);
@@ -248,28 +251,40 @@ public class FragmentArenaDuelo extends Fragment {
 
     private void toggleModoVAR(View view) {
         isVarActive = !isVarActive;
-        ConstraintLayout root = (ConstraintLayout) view.getParent(); // Asumiendo que el root es ConstraintLayout
+
+        ConstraintLayout root = (ConstraintLayout) getView();
         if (root == null) return;
 
         ConstraintSet set = new ConstraintSet();
         set.clone(root);
 
         if (isVarActive) {
+            // ACTIVAR VAR
             webViewCamara.setVisibility(View.VISIBLE);
             if (webViewCamara != null) {
                 webViewCamara.loadUrl(cameraUrl + "?t=" + System.currentTimeMillis());
             }
-            set.setGuidelinePercent(R.id.guidelineVAR, 0.45f);
-            containerMarcadoresDinamicos.setOrientation(LinearLayout.VERTICAL);
+            set.setGuidelinePercent(R.id.guidelineVAR, 0.45f); // Expande la cámara
+
+            // 🔥 OCULTAMOS LOS MARCADORES
+            if (scrollMarcadores != null) {
+                scrollMarcadores.setVisibility(View.GONE);
+            }
         } else {
+            // DESACTIVAR VAR
             if (webViewCamara != null) {
                 webViewCamara.loadUrl("about:blank");
                 webViewCamara.setVisibility(View.GONE);
             }
-            set.setGuidelinePercent(R.id.guidelineVAR, 0.0f);
-            containerMarcadoresDinamicos.setOrientation(LinearLayout.HORIZONTAL);
+            set.setGuidelinePercent(R.id.guidelineVAR, 0.0f); // Oculta la cámara
+
+            // 🔥 MOSTRAMOS LOS MARCADORES DE NUEVO
+            if (scrollMarcadores != null) {
+                scrollMarcadores.setVisibility(View.VISIBLE);
+            }
         }
 
+        // Esta línea hace que ocultar los marcadores y expandir la cámara se vea como una animación fluida
         TransitionManager.beginDelayedTransition(root);
         set.applyTo(root);
     }
