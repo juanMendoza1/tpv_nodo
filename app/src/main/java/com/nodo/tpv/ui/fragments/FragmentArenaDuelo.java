@@ -31,6 +31,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.imageview.ShapeableImageView;
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.LogBatallaAdapter;
+import com.nodo.tpv.data.database.AppDatabase;
+import com.nodo.tpv.data.entities.BolaAnotada;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.ui.main.MainActivity;
@@ -63,7 +65,6 @@ public class FragmentArenaDuelo extends Fragment {
     private WebView webViewCamara;
 
     // URL DE LA CÁMARA (NODO CAM - Plan B)
-    // Usamos HTTP porque el servidor nativo MJPEG sirve una web
     private String cameraUrl = "http://192.168.1.2:8080/";
 
     // Vistas de Paneles Deslizables
@@ -95,6 +96,9 @@ public class FragmentArenaDuelo extends Fragment {
 
     private List<Integer> equiposSalvadosEnRonda = new ArrayList<>();
     private String reglaActualSync = "GANADOR_SALVA";
+    private List<Producto> municionActual = new ArrayList<>();
+
+    private final java.util.Random random = new java.util.Random();
 
     public static FragmentArenaDuelo newInstance(List<Cliente> azul, List<Cliente> rojo, String tipoJuego, int idMesa) {
         FragmentArenaDuelo f = new FragmentArenaDuelo();
@@ -131,10 +135,8 @@ public class FragmentArenaDuelo extends Fragment {
         // 1. VINCULACIÓN DE ESTRUCTURA Y VIDEO
         layoutContenidoArena = view.findViewById(R.id.layoutContenidoArena);
         panelAcciones = view.findViewById(R.id.panelAccionesLateral);
-
-        // CORRECCIÓN: Usamos el ID del WebView (Asegúrate que el XML tenga <WebView android:id="@+id/webViewCamara">)
         webViewCamara = view.findViewById(R.id.webViewCamara);
-        configurarWebView(); // Configuramos el navegador interno
+        configurarWebView();
 
         // 2. VINCULACIÓN DE PANELES
         panelHistorial = view.findViewById(R.id.panelHistorialDeslizable);
@@ -179,9 +181,7 @@ public class FragmentArenaDuelo extends Fragment {
         view.findViewById(R.id.btnFinalizarDuelo).setOnClickListener(v -> mostrarResumenFinalBatalla());
 
         // --- BOTÓN VAR (ACTIVACIÓN DE STREAMING) ---
-        view.findViewById(R.id.btnVAR).setOnClickListener(v -> {
-            toggleModoVAR(view);
-        });
+        view.findViewById(R.id.btnVAR).setOnClickListener(this::toggleModoVAR);
 
         btnReglaGanador.setOnClickListener(v -> productoViewModel.actualizarReglaDuelo("GANADOR_SALVA"));
         btnReglaTodos.setOnClickListener(v -> productoViewModel.actualizarReglaDuelo("TODOS_PAGAN"));
@@ -230,19 +230,13 @@ public class FragmentArenaDuelo extends Fragment {
         productoViewModel.getDbTrigger().observe(getViewLifecycleOwner(), t -> vincularScoresExistentes());
     }
 
-    // --- CONFIGURACIÓN DEL VISOR WEB (MJPEG PLAYER) ---
-
     private void configurarWebView() {
         if (webViewCamara != null) {
             WebSettings settings = webViewCamara.getSettings();
             settings.setJavaScriptEnabled(true);
-
-            // --- AJUSTES PARA ZOOM ---
-            settings.setSupportZoom(true);        // Habilitar soporte de zoom
-            settings.setBuiltInZoomControls(true); // Habilitar controles nativos (pellizcar)
-            settings.setDisplayZoomControls(false); // OCULTAR botones +/- feos
-
-            // Ajustes de pantalla
+            settings.setSupportZoom(true);
+            settings.setBuiltInZoomControls(true);
+            settings.setDisplayZoomControls(false);
             settings.setLoadWithOverviewMode(true);
             settings.setUseWideViewPort(true);
 
@@ -252,50 +246,37 @@ public class FragmentArenaDuelo extends Fragment {
         }
     }
 
-    // --- LÓGICA DE TRANSICIÓN 60/40 Y CARGA DE VIDEO ---
-
     private void toggleModoVAR(View view) {
         isVarActive = !isVarActive;
-        ConstraintLayout root = (ConstraintLayout) view;
+        ConstraintLayout root = (ConstraintLayout) view.getParent(); // Asumiendo que el root es ConstraintLayout
+        if (root == null) return;
+
         ConstraintSet set = new ConstraintSet();
         set.clone(root);
 
         if (isVarActive) {
-            // 1. Mostrar el contenedor primero
             webViewCamara.setVisibility(View.VISIBLE);
-
-            // 2. Cargar el stream (Agregamos timestamp para evitar caché vieja)
             if (webViewCamara != null) {
                 webViewCamara.loadUrl(cameraUrl + "?t=" + System.currentTimeMillis());
             }
-
-            // 3. Aplicar el cambio de layout (60/40) para dar espacio al video
             set.setGuidelinePercent(R.id.guidelineVAR, 0.45f);
             containerMarcadoresDinamicos.setOrientation(LinearLayout.VERTICAL);
-
         } else {
-            // 1. Detener carga (Ahorro de memoria)
             if (webViewCamara != null) {
                 webViewCamara.loadUrl("about:blank");
                 webViewCamara.setVisibility(View.GONE);
             }
-
-            // 2. Restaurar layout original
             set.setGuidelinePercent(R.id.guidelineVAR, 0.0f);
             containerMarcadoresDinamicos.setOrientation(LinearLayout.HORIZONTAL);
         }
 
-        // Animación suave del layout
         TransitionManager.beginDelayedTransition(root);
         set.applyTo(root);
     }
 
-    // --- GESTIÓN DE CICLO DE VIDA ---
-
     @Override
     public void onStop() {
         super.onStop();
-        // Si salimos, paramos el video para no gastar batería
         if (webViewCamara != null) {
             webViewCamara.loadUrl("about:blank");
         }
@@ -304,13 +285,12 @@ public class FragmentArenaDuelo extends Fragment {
     @Override
     public void onResume() {
         super.onResume();
-        // Si el VAR estaba activo, recargamos el video al volver
         if (isVarActive && webViewCamara != null) {
             webViewCamara.loadUrl(cameraUrl + "?t=" + System.currentTimeMillis());
         }
     }
 
-    // --- LÓGICA DE JUEGO Y MARCADORES (SIN CAMBIOS) ---
+    // --- LÓGICA DE JUEGO Y MARCADORES ---
 
     private void validarYProcesarPunto(int colorEquipo) {
         if (hayPendientesBloqueantes) {
@@ -318,17 +298,25 @@ public class FragmentArenaDuelo extends Fragment {
             toggleDespacho(true);
             return;
         }
-        productoViewModel.getListaApuestaEntregada().observe(getViewLifecycleOwner(), lista -> {
-            if (lista == null || lista.isEmpty()) return;
-            if (switchPin.isChecked()) solicitarPinYRegistrar(colorEquipo);
-            else ejecutarImpactoDirecto(colorEquipo);
-        });
+
+        // 🔥 CORRECCIÓN DEL BUG: Usamos la lista que ya está precargada y sincronizada
+        if (municionActual == null || municionActual.isEmpty()) {
+            Toast.makeText(getContext(), "No hay munición en juego", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (switchPin != null && switchPin.isChecked()) {
+            solicitarPinYRegistrar(colorEquipo);
+        } else {
+            ejecutarImpactoDirecto(colorEquipo);
+        }
     }
 
     private void ejecutarImpactoDirecto(int colorEquipo) {
         requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
         productoViewModel.aplicarDanioMultiequipo(colorEquipo);
         dispararCelebracion();
+        estallarYLimpiarMesa(); // ¡Boom! Explota la mesa
         Toast.makeText(getContext(), "¡Punto registrado!", Toast.LENGTH_SHORT).show();
     }
 
@@ -342,57 +330,11 @@ public class FragmentArenaDuelo extends Fragment {
                     if (PIN_MAESTRO.equals(etPin.getText().toString())) {
                         productoViewModel.aplicarDanioMultiequipo(colorEquipo);
                         dispararCelebracion();
+                        estallarYLimpiarMesa(); // ¡Boom! Explota la mesa tras el PIN
                     } else {
                         Toast.makeText(getContext(), "PIN Incorrecto", Toast.LENGTH_SHORT).show();
                     }
                 }).show();
-    }
-
-    private void generarInterfazDinamica(Map<Integer, Integer> mapa) {
-        containerGuerrerosDinamicos.removeAllViews();
-        containerMarcadoresDinamicos.removeAllViews();
-        Map<Integer, List<Integer>> equipos = new HashMap<>();
-        for (Map.Entry<Integer, Integer> entry : mapa.entrySet()) {
-            if (!equipos.containsKey(entry.getValue())) equipos.put(entry.getValue(), new ArrayList<>());
-            equipos.get(entry.getValue()).add(entry.getKey());
-        }
-
-        for (Integer color : equipos.keySet()) {
-            View vMarcador = getLayoutInflater().inflate(R.layout.item_marcador_arena_equipo, containerMarcadoresDinamicos, false);
-            vMarcador.setTag(color);
-            ((MaterialCardView) vMarcador).setStrokeColor(ColorStateList.valueOf(color));
-            ((TextView) vMarcador.findViewById(R.id.tvLabelEquipoDinamico)).setText(getNombreColor(color));
-            vMarcador.setOnClickListener(v -> {
-                if (hayPendientesBloqueantes) {
-                    Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
-                    toggleDespacho(true);
-                    return;
-                }
-
-                if ("ULTIMO_PAGA".equals(reglaActualSync)) {
-                    gestionarReglaUltimoPaga(color);
-                } else {
-                    validarYProcesarPunto(color);
-                }
-            });
-            containerMarcadoresDinamicos.addView(vMarcador);
-
-            View vPeloton = getLayoutInflater().inflate(R.layout.item_peloton_arena, containerGuerrerosDinamicos, false);
-            ((ShapeableImageView) vPeloton.findViewById(R.id.imgAvatarMando)).setStrokeColor(ColorStateList.valueOf(color));
-            FlexboxLayout followers = vPeloton.findViewById(R.id.containerSeguidores);
-
-            for (Integer id : equipos.get(color)) {
-                View burbuja = getLayoutInflater().inflate(R.layout.item_cliente_burbuja, followers, false);
-                ((TextView) burbuja.findViewById(R.id.tvNombreBurbuja)).setText(productoViewModel.obtenerAliasCliente(id));
-                productoViewModel.obtenerSaldoIndividualDuelo(id).observe(getViewLifecycleOwner(), saldo -> {
-                    if (saldo != null) ((TextView) burbuja.findViewById(R.id.tvSaldoClienteBurbuja)).setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(saldo));
-                });
-                followers.addView(burbuja);
-            }
-            containerGuerrerosDinamicos.addView(vPeloton);
-        }
-        vincularScoresExistentes();
-        actualizarEstadoVisualMarcadores();
     }
 
     private void vincularScoresExistentes() {
@@ -416,7 +358,6 @@ public class FragmentArenaDuelo extends Fragment {
 
     private void toggleDespacho(boolean mostrar) {
         if (despachoVisible == mostrar) return;
-
         if (mostrar) {
             com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(requireContext());
             com.nodo.tpv.data.entities.Usuario user = session.obtenerUsuario();
@@ -474,9 +415,19 @@ public class FragmentArenaDuelo extends Fragment {
     }
 
     private void actualizarTextoBolsa(List<Producto> productos) {
+        // 🔥 Guardamos la munición en vivo para consultarla instantáneamente luego
+        this.municionActual = productos;
+
         BigDecimal total = BigDecimal.ZERO;
-        if (productos != null) for (Producto p : productos) total = total.add(p.getPrecioProducto());
-        tvInfoMunicion.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(total));
+        if (productos != null) {
+            for (Producto p : productos) {
+                total = total.add(p.getPrecioProducto());
+            }
+        }
+
+        if (tvInfoMunicion != null) {
+            tvInfoMunicion.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(total));
+        }
     }
 
     private String getNombreColor(int color) {
@@ -577,6 +528,7 @@ public class FragmentArenaDuelo extends Fragment {
     private void aplicarCierreRondaUltimoPaga(int colorGanador, int colorPerdedor) {
         productoViewModel.aplicarDanioUltimoPaga(colorGanador, colorPerdedor);
         dispararCelebracion();
+        estallarYLimpiarMesa(); // ¡Boom! Explota la mesa
         equiposSalvadosEnRonda.clear();
         animarRestauracionUI();
     }
@@ -641,4 +593,401 @@ public class FragmentArenaDuelo extends Fragment {
             v.setEnabled(true);
         }
     }
+
+    private void generarInterfazDinamica(Map<Integer, Integer> mapa) {
+        containerGuerrerosDinamicos.removeAllViews();
+        containerMarcadoresDinamicos.removeAllViews();
+        Map<Integer, List<Integer>> equipos = new HashMap<>();
+        for (Map.Entry<Integer, Integer> entry : mapa.entrySet()) {
+            if (!equipos.containsKey(entry.getValue())) equipos.put(entry.getValue(), new ArrayList<>());
+            equipos.get(entry.getValue()).add(entry.getKey());
+        }
+
+        for (Integer color : equipos.keySet()) {
+            View vMarcador = getLayoutInflater().inflate(R.layout.item_marcador_arena_equipo, containerMarcadoresDinamicos, false);
+            vMarcador.setTag(color);
+            ((MaterialCardView) vMarcador).setStrokeColor(ColorStateList.valueOf(color));
+            ((TextView) vMarcador.findViewById(R.id.tvLabelEquipoDinamico)).setText(getNombreColor(color));
+
+            LinearLayout containerMalas = vMarcador.findViewById(R.id.containerMalasVisual);
+            FlexboxLayout containerBolas = vMarcador.findViewById(R.id.containerBolasIngresadas);
+            View layoutInventarioBolas = vMarcador.findViewById(R.id.layoutInventarioBolas);
+
+            if (layoutInventarioBolas != null) {
+                layoutInventarioBolas.setVisibility(View.VISIBLE);
+            }
+
+            // 1. Lógica del Botón ROJO (Falta / Malas)
+            View btnFalta = vMarcador.findViewById(R.id.btnFalta);
+            if (btnFalta != null) {
+                btnFalta.setOnClickListener(v -> {
+                    if (hayPendientesBloqueantes) {
+                        Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
+                        toggleDespacho(true);
+                        return;
+                    }
+                    requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                    abrirPanelSeleccionMalas(color, containerMalas);
+                });
+            }
+
+            // 2. Lógica del Botón CYAN (Anotar Bola)
+            View btnAnotarBola = vMarcador.findViewById(R.id.btnAnotarBola);
+            if (btnAnotarBola != null) {
+                btnAnotarBola.setOnClickListener(v -> {
+                    if (hayPendientesBloqueantes) {
+                        Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
+                        toggleDespacho(true);
+                        return;
+                    }
+                    abrirPanelSeleccionBolas(color);
+                });
+            }
+
+            // 3. Pintar las bolas del equipo en vivo
+            String uuidActual = productoViewModel.getUuidDueloActual();
+            if (uuidActual != null && containerBolas != null) {
+                AppDatabase.getInstance(requireContext()).bolaDueloDao().observarBolasDuelo(uuidActual)
+                        .observe(getViewLifecycleOwner(), bolasAnotadas -> {
+                            if (bolasAnotadas != null) {
+                                containerBolas.removeAllViews();
+
+                                for (BolaAnotada bola : bolasAnotadas) {
+                                    if (bola.getColorEquipo() == color) {
+                                        View bolaView = getLayoutInflater().inflate(R.layout.item_bola_visual, containerBolas, false);
+                                        TextView tvNum = bolaView.findViewById(R.id.tvBolaNumero);
+                                        tvNum.setText(String.valueOf(bola.getNumeroBola()));
+                                        tvNum.getBackground().setTint(color);
+                                        tvNum.setTextColor(Color.WHITE);
+
+                                        bolaView.setOnLongClickListener(v -> {
+                                            requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                                            new Thread(() -> {
+                                                AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, bola.getNumeroBola());
+                                            }).start();
+                                            Toast.makeText(getContext(), "Bola " + bola.getNumeroBola() + " anulada.", Toast.LENGTH_SHORT).show();
+                                            return true;
+                                        });
+
+                                        containerBolas.addView(bolaView);
+                                    }
+                                }
+                            }
+                        });
+            }
+
+            // 🔥 SCORE MAESTRO (CLICK SOSTENIDO) Y EXPLOSIÓN
+            vMarcador.setOnLongClickListener(v -> {
+                if (hayPendientesBloqueantes) {
+                    Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
+                    toggleDespacho(true);
+                    return true;
+                }
+
+                // Vibración fuerte para confirmar que el toque fue detectado
+                requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+
+                // Intentamos procesar el punto. Si todo está bien, internamente se sumará y estallarán las bolas
+                if ("ULTIMO_PAGA".equals(reglaActualSync)) {
+                    gestionarReglaUltimoPaga(color);
+                } else {
+                    validarYProcesarPunto(color);
+                }
+
+                return true;
+            });
+
+            containerMarcadoresDinamicos.addView(vMarcador);
+
+            // --- CARGA DEL PELOTÓN (BURBUJAS DE JUGADORES) ---
+            View vPeloton = getLayoutInflater().inflate(R.layout.item_peloton_arena, containerGuerrerosDinamicos, false);
+            ((ShapeableImageView) vPeloton.findViewById(R.id.imgAvatarMando)).setStrokeColor(ColorStateList.valueOf(color));
+            FlexboxLayout followers = vPeloton.findViewById(R.id.containerSeguidores);
+
+            for (Integer id : equipos.get(color)) {
+                View burbuja = getLayoutInflater().inflate(R.layout.item_cliente_burbuja, followers, false);
+                ((TextView) burbuja.findViewById(R.id.tvNombreBurbuja)).setText(productoViewModel.obtenerAliasCliente(id));
+                productoViewModel.obtenerSaldoIndividualDuelo(id).observe(getViewLifecycleOwner(), saldo -> {
+                    if (saldo != null) ((TextView) burbuja.findViewById(R.id.tvSaldoClienteBurbuja)).setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(saldo));
+                });
+                followers.addView(burbuja);
+            }
+            containerGuerrerosDinamicos.addView(vPeloton);
+        }
+
+        vincularScoresExistentes();
+        actualizarEstadoVisualMarcadores();
+    }
+
+    // --- PANEL DEL DESLIZADOR DE MALAS (FALTAS) ---
+    private void abrirPanelSeleccionMalas(int colorEquipo, LinearLayout containerMalasVisual) {
+        android.app.Dialog dialog = new android.app.Dialog(requireContext(), android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+        View view = getLayoutInflater().inflate(R.layout.dialog_seleccion_malas_pro, null);
+        dialog.setContentView(view);
+
+        view.setAlpha(0f);
+        view.setScaleX(0.90f); view.setScaleY(0.90f);
+        view.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(250).start();
+
+        TextView tvCantidad = view.findViewById(R.id.tvCantidadMalas);
+        android.widget.SeekBar slider = view.findViewById(R.id.sliderMalas);
+
+        int malasActuales = 0;
+        if (containerMalasVisual != null && containerMalasVisual.getChildCount() > 0) {
+            View malaView = containerMalasVisual.getChildAt(0);
+            TextView tvNum = malaView.findViewById(R.id.tvBolaNumero);
+            if (tvNum != null) {
+                try { malasActuales = Integer.parseInt(tvNum.getText().toString()); }
+                catch (NumberFormatException ignored) {}
+            }
+        }
+
+        slider.setProgress(malasActuales);
+        tvCantidad.setText(String.valueOf(malasActuales));
+
+        slider.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) {
+                tvCantidad.setText(String.valueOf(progress));
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(android.widget.SeekBar seekBar) {}
+        });
+
+        view.findViewById(R.id.btnCerrarDialog).setOnClickListener(v -> dialog.dismiss());
+
+        view.findViewById(R.id.btnConfirmarMalas).setOnClickListener(v -> {
+            int nuevasMalas = slider.getProgress();
+            if (containerMalasVisual != null) {
+                containerMalasVisual.removeAllViews();
+                if (nuevasMalas > 0) {
+                    View bolaMala = getLayoutInflater().inflate(R.layout.item_bola_visual, containerMalasVisual, false);
+                    TextView tvNum = bolaMala.findViewById(R.id.tvBolaNumero);
+                    tvNum.setText(String.valueOf(nuevasMalas));
+                    tvNum.getBackground().setTint(Color.parseColor("#FF1744"));
+                    tvNum.setTextColor(Color.WHITE);
+                    containerMalasVisual.addView(bolaMala);
+
+                    bolaMala.setScaleX(0); bolaMala.setScaleY(0);
+                    bolaMala.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start();
+                }
+            }
+            dialog.dismiss();
+        });
+
+        dialog.show();
+    }
+
+    // --- PANEL DE BOLAS EN TRIÁNGULO ---
+    private void abrirPanelSeleccionBolas(int colorEquipo) {
+        android.app.Dialog dialog = new android.app.Dialog(requireContext(), android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
+        View view = getLayoutInflater().inflate(R.layout.dialog_seleccion_bolas, null);
+        dialog.setContentView(view);
+
+        view.setAlpha(0f);
+        view.setScaleX(0.95f); view.setScaleY(0.95f);
+        view.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(250).start();
+
+        LinearLayout containerTriangulo = view.findViewById(R.id.containerTriangulo);
+        view.findViewById(R.id.btnCerrarDialog).setOnClickListener(v -> dialog.dismiss());
+        view.findViewById(R.id.btnConfirmarBolas).setOnClickListener(v -> dialog.dismiss());
+
+        new Thread(() -> {
+            String uuidActual = productoViewModel.getUuidDueloActual();
+            List<Integer> bolasBloqueadas = AppDatabase.getInstance(requireContext()).bolaDueloDao().obtenerBolasYaAnotadasSincrono(uuidActual);
+
+            requireActivity().runOnUiThread(() -> {
+                int numeroBola = 1;
+                int sizePx = (int) (40 * getResources().getDisplayMetrics().density);
+                int marginPx = (int) (3 * getResources().getDisplayMetrics().density);
+
+                for (int fila = 1; fila <= 5; fila++) {
+                    LinearLayout rowLayout = new LinearLayout(requireContext());
+                    rowLayout.setOrientation(LinearLayout.HORIZONTAL);
+                    rowLayout.setGravity(android.view.Gravity.CENTER);
+
+                    for (int col = 0; col < fila; col++) {
+                        final int bolaActual = numeroBola;
+
+                        MaterialButton btnBola = new MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle);
+                        btnBola.setText(String.valueOf(bolaActual));
+                        btnBola.setCornerRadius(100);
+                        btnBola.setTextSize(14f);
+
+                        btnBola.setPadding(0, 0, 0, 0);
+                        btnBola.setInsetBottom(0);
+                        btnBola.setInsetTop(0);
+                        btnBola.setMinWidth(0);
+                        btnBola.setMinHeight(0);
+
+                        btnBola.setTextColor(Color.WHITE);
+                        btnBola.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#BDBDBD")));
+                        btnBola.setStrokeWidth(3);
+
+                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(sizePx, sizePx);
+                        params.setMargins(marginPx, marginPx, marginPx, marginPx);
+                        btnBola.setLayoutParams(params);
+
+                        if (bolasBloqueadas != null && bolasBloqueadas.contains(bolaActual)) {
+                            btnBola.setEnabled(false);
+                            btnBola.setAlpha(0.25f);
+                            btnBola.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#424242")));
+                            btnBola.setTextColor(Color.WHITE);
+                        } else {
+                            btnBola.setOnClickListener(v -> {
+                                btnBola.setEnabled(false);
+                                btnBola.setBackgroundTintList(ColorStateList.valueOf(colorEquipo));
+                                btnBola.setStrokeColor(ColorStateList.valueOf(colorEquipo));
+                                btnBola.setTextColor(Color.WHITE);
+
+                                btnBola.animate().scaleX(1.15f).scaleY(1.15f).setDuration(150)
+                                        .withEndAction(() -> btnBola.animate().scaleX(1f).scaleY(1f).start()).start();
+
+                                new Thread(() -> {
+                                    AppDatabase.getInstance(requireContext()).bolaDueloDao().insertarBola(
+                                            new BolaAnotada(uuidActual, colorEquipo, bolaActual)
+                                    );
+                                }).start();
+                            });
+                        }
+                        rowLayout.addView(btnBola);
+                        numeroBola++;
+                    }
+                    containerTriangulo.addView(rowLayout);
+                }
+            });
+        }).start();
+
+        dialog.show();
+    }
+
+    // --- NUEVA ANIMACIÓN: EXPLOSIÓN DE BOLAS Y LIMPIEZA DE MESA ---
+    // --- NUEVA ANIMACIÓN: EXPLOSIÓN DE BOLAS RALENTIZADA ("MÁS CHEVRE") ---
+    private void estallarYLimpiarMesa() {
+        String uuidActual = productoViewModel.getUuidDueloActual();
+        if (uuidActual == null) return;
+
+        boolean hayAnimacion = false;
+        long duracionTotalAnimacion = 1200; // Duración completa del inflado + explosión
+
+        if (containerMarcadoresDinamicos == null) return;
+
+        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
+            View marcadorTeam = containerMarcadoresDinamicos.getChildAt(i);
+            if (!(marcadorTeam instanceof MaterialCardView)) continue;
+
+            // Obtenemos el color del equipo de la tarjeta (el borde)
+            int colorEquipo = ((MaterialCardView) marcadorTeam).getStrokeColor();
+
+            // 1. Estallar Malas (Faltas)
+            LinearLayout contenedorMalas = marcadorTeam.findViewById(R.id.containerMalasVisual);
+            if (contenedorMalas != null) {
+                // Hacemos una copia de la lista de vistas para iterar de forma segura
+                List<View> vistasMalas = new ArrayList<>();
+                for (int j = 0; j < contenedorMalas.getChildCount(); j++) vistasMalas.add(contenedorMalas.getChildAt(j));
+
+                for (View v : vistasMalas) {
+                    estallarUnaVistaConParticulas(v, colorEquipo); // ¡Boom individual!
+                    hayAnimacion = true;
+                }
+            }
+
+            // 2. Estallar Bolas
+            FlexboxLayout contenedorBolas = marcadorTeam.findViewById(R.id.containerBolasIngresadas);
+            if (contenedorBolas != null) {
+                List<View> vistasBolas = new ArrayList<>();
+                for (int j = 0; j < contenedorBolas.getChildCount(); j++) vistasBolas.add(contenedorBolas.getChildAt(j));
+
+                for (View v : vistasBolas) {
+                    estallarUnaVistaConParticulas(v, colorEquipo); // ¡Boom individual!
+                    hayAnimacion = true;
+                }
+            }
+        }
+
+        // 🔥 SINCRONIZACIÓN: Esperamos a que termine la explosión lenta para borrar los datos
+        // Usamos una duración ligeramente mayor para asegurar que todas las partículas desaparezcan
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            new Thread(() -> {
+                AppDatabase.getInstance(requireContext()).bolaDueloDao().limpiarMesa(uuidActual);
+            }).start();
+        }, hayAnimacion ? duracionTotalAnimacion + 100 : 0);
+    }
+
+    private void estallarUnaVistaConParticulas(View vistaABorrar, int colorExplosion) {
+        if (vistaABorrar == null) return;
+        ViewGroup root = (ViewGroup) vistaABorrar.getRootView();
+        if (root == null) return;
+
+        // 1. OBTENER POSICIÓN CENTRADA DE LA VISTA
+        int[] location = new int[2];
+        vistaABorrar.getLocationOnScreen(location);
+        int centerX = location[0] + (vistaABorrar.getWidth() / 2);
+        int centerY = location[1] + (vistaABorrar.getHeight() / 2);
+
+        // 2. ANIMACIÓN DE "INFLADO" (Precarga)
+        long duracionInflado = 400;
+        vistaABorrar.animate()
+                .scaleX(1.8f) // Se infla casi al doble
+                .scaleY(1.8f)
+                .alpha(0.5f) // Se vuelve un poco transparente
+                .setDuration(duracionInflado)
+                .setInterpolator(new android.view.animation.OvershootInterpolator()) // Efecto pop
+                .withEndAction(() -> {
+                    // --- PUNTO DE EXPLOSIÓN: La bola desaparece ---
+                    vistaABorrar.setVisibility(View.INVISIBLE);
+
+                    // 3. GENERAR Y ANIMAR PARTÍCULAS
+                    int totalParticulas = 30; // Cantidad de "fragmentos"
+                    long duracionVueloParticulas = 800;
+
+                    for (int i = 0; i < totalParticulas; i++) {
+                        // Crear la partícula visualmente
+                        View particula = new View(requireContext());
+                        particula.setBackgroundResource(R.drawable.item_particula_visual);
+                        particula.getBackground().setTint(colorExplosion); // Del color del equipo
+                        particula.setAlpha(1.0f);
+
+                        // Tamaño aleatorio para la partícula
+                        int size = 10 + random.nextInt(15); // Entre 10dp y 25dp
+                        int sizePx = (int) (size * getResources().getDisplayMetrics().density);
+
+                        // Posicionarla en el centro exacto de la bola que explotó
+                        ConstraintLayout.LayoutParams params = new ConstraintLayout.LayoutParams(sizePx, sizePx);
+                        params.leftToLeft = ConstraintLayout.LayoutParams.PARENT_ID;
+                        params.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
+                        particula.setLayoutParams(params);
+                        particula.setX(centerX - (sizePx / 2));
+                        particula.setY(centerY - (sizePx / 2));
+
+                        // Añaadirla al root view (encima de todo)
+                        root.addView(particula);
+
+                        // Calcular dirección y distancia aleatoria ("vuelo")
+                        float angulo = random.nextFloat() * 360f;
+                        float distancia = 150f + random.nextFloat() * 300f; // Vuelan entre 150 y 450px
+
+                        float tX = (float) (distancia * Math.cos(Math.toRadians(angulo)));
+                        float tY = (float) (distancia * Math.sin(Math.toRadians(angulo)));
+
+                        // Animación de "vuelo" de la partícula
+                        particula.animate()
+                                .translationXBy(tX)
+                                .translationYBy(tY)
+                                .scaleX(0.2f) // Se achican al final
+                                .scaleY(0.2f)
+                                .alpha(0f)    // Se desvanecen
+                                .setDuration(duracionVueloParticulas)
+                                .setInterpolator(new DecelerateInterpolator()) // Frenan al final
+                                .withEndAction(() -> {
+                                    // 🔥 LIMPIEZA: Borrar la partícula de memoria cuando termine
+                                    root.removeView(particula);
+                                })
+                                .start();
+                    }
+                })
+                .start();
+    }
+
+
 }

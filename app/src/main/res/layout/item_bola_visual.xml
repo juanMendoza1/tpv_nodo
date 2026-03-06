@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tvBolaNumero"
+    android:layout_width="35dp"
+    android:layout_height="35dp"
+    android:layout_margin="3dp"
+    android:background="@drawable/bg_avatar_circle"
+    android:gravity="center"
+    android:text="8"
+    android:textColor="#FFFFFF"
+    android:textSize="14sp"
+    android:textStyle="bold" />

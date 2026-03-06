@@ -2,8 +2,10 @@
 <com.google.android.material.card.MaterialCardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:layout_width="0dp" android:layout_height="wrap_content"
-    android:layout_weight="1" android:layout_margin="8dp"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_weight="1"
+    android:layout_margin="8dp"
     app:cardBackgroundColor="#1A000000"
     app:cardCornerRadius="16dp"
     app:cardElevation="0dp"
@@ -14,40 +16,48 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="4dp">
 
-        <TextView
-            android:id="@+id/tvLabelEquipoDinamico"
+        <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textAlignment="center"
-            android:textColor="#00E5FF"
-            android:textStyle="bold"
-            android:lines="1"
-            app:autoSizeTextType="uniform"
-            app:autoSizeMinTextSize="12sp"
-            app:autoSizeMaxTextSize="22sp"
-            android:layout_marginBottom="4dp"/>
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:id="@+id/tvLabelEquipoDinamico"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:text="EQUIPO A"
+                android:textColor="#00E5FF"
+                android:textStyle="bold"
+                android:textSize="18sp" />
+
+            <LinearLayout
+                android:id="@+id/containerMalasVisual"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:orientation="horizontal" />
+        </RelativeLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center"
-            android:weightSum="10" android:layout_marginBottom="8dp">
+            android:weightSum="10"
+            android:layout_marginBottom="8dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnFalta"
                 style="@style/Widget.MaterialComponents.Button.Icon"
                 android:layout_width="0dp"
                 android:layout_weight="2.5"
-                android:layout_height="60dp"
+                android:layout_height="45dp"
                 app:backgroundTint="#1AFF1744"
                 app:cornerRadius="16dp"
                 app:icon="@drawable/ic_remove"
-                app:iconGravity="textStart"
-                app:iconPadding="0dp"
                 app:iconTint="#FF1744"
                 app:strokeColor="#FF1744"
                 app:strokeWidth="2dp" />
@@ -61,24 +71,19 @@
                 android:textAlignment="center"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"
-                android:lines="1"
                 android:fontFamily="sans-serif-black"
                 app:autoSizeTextType="uniform"
-                app:autoSizeMinTextSize="24sp"
-                app:autoSizeMaxTextSize="64sp"
-                app:autoSizeStepGranularity="2sp"/>
+                app:autoSizeMaxTextSize="64sp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnAnotarBola"
                 style="@style/Widget.MaterialComponents.Button.Icon"
                 android:layout_width="0dp"
                 android:layout_weight="2.5"
-                android:layout_height="60dp"
+                android:layout_height="45dp"
                 app:backgroundTint="#1A00E5FF"
                 app:cornerRadius="16dp"
                 app:icon="@drawable/ic_add"
-                app:iconGravity="textStart"
-                app:iconPadding="0dp"
                 app:iconTint="#00E5FF"
                 app:strokeColor="#00E5FF"
                 app:strokeWidth="2dp" />
@@ -89,8 +94,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:layout_marginTop="8dp"
-            android:visibility="gone">
+            android:layout_marginTop="8dp">
 
             <View
                 android:layout_width="match_parent"
@@ -101,9 +105,10 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="BOLAS CONFIRMADAS"
+                android:text="BOLAS ANOTADAS"
                 android:textColor="#80FFFFFF"
-                android:textSize="10sp"
+                android:textSize="6sp"
+                android:letterSpacing="0.1"
                 android:layout_marginBottom="8dp"/>
 
             <com.google.android.flexbox.FlexboxLayout
@@ -112,7 +117,8 @@
                 android:layout_height="wrap_content"
                 app:flexWrap="wrap"
                 app:alignItems="center"
-                app:justifyContent="center">
+                app:justifyContent="flex_start">
+
             </com.google.android.flexbox.FlexboxLayout>
         </LinearLayout>
     </LinearLayout>

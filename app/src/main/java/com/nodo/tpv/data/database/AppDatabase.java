@@ -12,6 +12,7 @@ import androidx.room.TypeConverters;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
 import com.nodo.tpv.data.converters.BigDecimalConverter;
+import com.nodo.tpv.data.dao.BolaDueloDao;
 import com.nodo.tpv.data.dao.ClienteDao;
 import com.nodo.tpv.data.dao.DetalleDueloTemporalIndDao;
 import com.nodo.tpv.data.dao.DetallePedidoDao;
@@ -23,6 +24,7 @@ import com.nodo.tpv.data.dao.ProductoDao;
 import com.nodo.tpv.data.dao.TipoClienteDao;
 import com.nodo.tpv.data.dao.UsuarioDao;
 import com.nodo.tpv.data.dao.UsuarioSlotDao;
+import com.nodo.tpv.data.entities.BolaAnotada;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DetallePedido;
@@ -60,7 +62,8 @@ import java.util.concurrent.Executors;
                 PerfilDueloInd.class,
                 DetalleDueloTemporalInd.class,
                 UsuarioSlot.class,
-                LogSesion.class
+                LogSesion.class,
+                BolaAnotada.class
         },
         version = 1,
         exportSchema = false
@@ -84,6 +87,9 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract DetalleDueloTemporalIndDao detalleDueloTemporalIndDao();
 
     public abstract UsuarioSlotDao usuarioSlotDao();
+
+    public abstract BolaDueloDao bolaDueloDao();
+
 
     public static synchronized AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
