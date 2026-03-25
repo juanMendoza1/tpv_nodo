@@ -25,7 +25,7 @@ import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.HistorialAdapter;
 import com.nodo.tpv.adapters.TicketProductosAdapter;
 import com.nodo.tpv.data.entities.VentaHistorial;
-import com.nodo.tpv.viewmodel.ProductoViewModel;
+import com.nodo.tpv.viewmodel.PedidoViewModel; // <-- NUEVO IMPORT
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -39,7 +39,7 @@ public class HistorialVentasFragment extends Fragment {
     private RecyclerView rvHistorial, rvDetalleIntegrado;
     private HistorialAdapter adapter;
     private TicketProductosAdapter ticketAdapter;
-    private ProductoViewModel productoViewModel;
+    private PedidoViewModel pedidoViewModel; // <-- AHORA USAMOS EL CAJERO
 
     private View layoutListaHistorial, layoutDetalleVentaIntegrado,
             layoutEvidenciaIntegrada, layoutNoFotoMsg, layoutDashboardExtra;
@@ -73,10 +73,11 @@ public class HistorialVentasFragment extends Fragment {
 
         configurarUI();
 
-        productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+        // INSTANCIAMOS EL PEDIDO VIEW MODEL (El Cajero)
+        pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
 
-        // Observar historial general
-        productoViewModel.obtenerTodoElHistorial().observe(getViewLifecycleOwner(), lista -> {
+        // Observar historial general usando el PedidoViewModel
+        pedidoViewModel.obtenerTodoElHistorial().observe(getViewLifecycleOwner(), lista -> {
             if (lista != null) {
                 adapter.setLista(lista);
                 actualizarDashboard(lista);
@@ -89,33 +90,27 @@ public class HistorialVentasFragment extends Fragment {
     }
 
     private void configurarUI() {
-        // CAMBIO CLAVE: Usamos LinearLayoutManager para que el item ocupe TODA la fila
         rvHistorial.setLayoutManager(new LinearLayoutManager(getContext()));
 
         adapter = new HistorialAdapter();
         adapter.setOnVentaClickListener(this::abrirDetalle);
         rvHistorial.setAdapter(adapter);
 
-        // Recycler del Detalle interno
         rvDetalleIntegrado.setLayoutManager(new LinearLayoutManager(getContext()));
         ticketAdapter = new TicketProductosAdapter();
         rvDetalleIntegrado.setAdapter(ticketAdapter);
     }
 
     private void abrirDetalle(VentaHistorial venta) {
-        // Animación suave de transición
         TransitionManager.beginDelayedTransition((ViewGroup) getView());
 
-        // Colapsar dashboard y cambiar vistas
         layoutDashboardExtra.setVisibility(View.GONE);
         layoutListaHistorial.setVisibility(View.GONE);
         layoutDetalleVentaIntegrado.setVisibility(View.VISIBLE);
 
-        // Info de cabecera
         SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy - hh:mm a", Locale.getDefault());
         tvInfoVentaIntegrada.setText("Cliente: " + venta.nombreCliente.toUpperCase() + " | " + sdf.format(new Date(venta.fechaLong)));
 
-        // Gestión de la foto
         if (venta.fotoComprobante != null && !venta.fotoComprobante.isEmpty()) {
             try {
                 byte[] decoded = Base64.decode(venta.fotoComprobante, Base64.NO_WRAP);
@@ -130,9 +125,8 @@ public class HistorialVentasFragment extends Fragment {
             mostrarSinEvidencia();
         }
 
-        // 🔥 CARGA DE PRODUCTOS: Aquí es donde traemos el detalle de la venta
-        // Usamos el ID de la venta padre para filtrar en 'venta_detalle_historial'
-        productoViewModel.obtenerDetallesTicket(venta.idVenta, detalles -> {
+        // 🔥 CARGA DE PRODUCTOS: Usamos pedidoViewModel
+        pedidoViewModel.obtenerDetallesTicket(venta.idVenta, detalles -> {
             if (detalles != null && !detalles.isEmpty()) {
                 ticketAdapter.setLista(detalles);
             } else {

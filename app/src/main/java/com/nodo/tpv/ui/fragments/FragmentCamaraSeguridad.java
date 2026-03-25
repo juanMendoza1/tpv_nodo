@@ -33,7 +33,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.nodo.tpv.R;
-import com.nodo.tpv.viewmodel.ProductoViewModel;
+import com.nodo.tpv.viewmodel.PedidoViewModel; // <-- NUEVO IMPORT
 
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
@@ -45,7 +45,8 @@ public class FragmentCamaraSeguridad extends Fragment {
     private ListenableFuture<ProcessCameraProvider> cameraProviderFuture;
     private PreviewView previewView;
     private ImageCapture imageCapture;
-    private ProductoViewModel productoViewModel;
+
+    private PedidoViewModel pedidoViewModel; // <-- AHORA USAMOS EL CAJERO
 
     private View layoutPreviewCamara, containerBotonesSeleccion, containerConfirmacionFoto, containerDatosPago;
     private ImageView ivFotoCapturada, ivCodigoQR;
@@ -78,7 +79,9 @@ public class FragmentCamaraSeguridad extends Fragment {
             aliasCliente = getArguments().getString("alias");
             montoTotal = (BigDecimal) getArguments().getSerializable("monto");
         }
-        productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+
+        // INSTANCIAMOS EL PEDIDO VIEW MODEL
+        pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
 
         // REQUERIMIENTO: Solo se puede salir con la X.
         // Bloqueamos el botón atrás del sistema.
@@ -199,7 +202,8 @@ public class FragmentCamaraSeguridad extends Fragment {
     }
 
     private void finalizarPago(String metodo, String foto) {
-        productoViewModel.finalizarCuenta(idCliente, aliasCliente, metodo, foto);
+        // 🔥 LLAMAMOS AL CAJERO (PedidoViewModel) PARA CERRAR LA CUENTA
+        pedidoViewModel.finalizarCuenta(idCliente, aliasCliente, metodo, foto);
         requireActivity().getSupportFragmentManager().popBackStack();
     }
 

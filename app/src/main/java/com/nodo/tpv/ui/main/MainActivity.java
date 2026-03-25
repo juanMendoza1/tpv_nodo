@@ -38,6 +38,8 @@ import com.nodo.tpv.ui.fragments.FragmentEsperaVenta;
 import com.nodo.tpv.ui.fragments.FragmentSesion;
 import com.nodo.tpv.ui.fragments.ListaClientesFragment;
 import com.nodo.tpv.util.SessionManager;
+import com.nodo.tpv.viewmodel.ArenaViewModel;
+import com.nodo.tpv.viewmodel.PedidoViewModel;
 import com.nodo.tpv.viewmodel.ProductoViewModel;
 import com.nodo.tpv.viewmodel.UsuarioSlotViewModel;
 
@@ -45,8 +47,12 @@ import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity implements FragmentSesion.OnSesionListener {
 
+    // --- VIEWMODELS ---
     private ProductoViewModel productoViewModel;
+    private PedidoViewModel pedidoViewModel;
+    private ArenaViewModel arenaViewModel;
     private UsuarioSlotViewModel usuarioSlotViewModel;
+
     private SessionManager sessionManager;
     private View splashContainer;
     private View contentLayout;
@@ -68,28 +74,34 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
             return insets;
         });
 
-        // 1. Inicialización de ViewModels
+        // 1. Inicialización de TODOS los ViewModels
         productoViewModel = new ViewModelProvider(this).get(ProductoViewModel.class);
+        pedidoViewModel = new ViewModelProvider(this).get(PedidoViewModel.class);
+        arenaViewModel = new ViewModelProvider(this).get(ArenaViewModel.class);
         usuarioSlotViewModel = new ViewModelProvider(this).get(UsuarioSlotViewModel.class);
-
-        productoViewModel.insertarProductosPrueba();
 
         // 2. 🔥 OBSERVADORES DE SINCRONIZACIÓN INTELIGENTE
 
-        // A. Sincronización de Stock (Ventas y deudas)
-        productoViewModel.getEventoVentaExitosa().observe(this, huboVenta -> {
+        // A1. Sincronización cuando se genera una venta en el Cajero (Pedidos manuales)
+        pedidoViewModel.getEventoVentaExitosa().observe(this, huboVenta -> {
             if (huboVenta != null && huboVenta) {
                 programarSincronizacionStock(this);
-                productoViewModel.resetEventoVenta(); // Limpiar evento
+                pedidoViewModel.resetEventoVenta();
+            }
+        });
+
+        // A2. Sincronización cuando se genera una deuda en la Arena (Bolas, Puntos)
+        arenaViewModel.getEventoVentaExitosa().observe(this, huboVenta -> {
+            if (huboVenta != null && huboVenta) {
+                programarSincronizacionStock(this);
+                arenaViewModel.resetEventoVenta();
             }
         });
 
         // B. Sincronización de Sesiones (Punto 1: Fichaje de operarios)
-        // En el onCreate de MainActivity.java
         usuarioSlotViewModel.getEventoSessionSync().observe(this, nuevoLog -> {
             if (nuevoLog != null && nuevoLog) {
                 programarSincronizacionSesion(this);
-                // 🔥 CORRECCIÓN: No uses setValue aquí, llama al método del ViewModel
                 usuarioSlotViewModel.resetEventoSession();
             }
         });
@@ -139,7 +151,6 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
         }
         transaction.commit();
 
-        // 🔥 Sincronización de seguridad al iniciar la app (Vacia colas pendientes)
         programarSincronizacionStock(this);
         programarSincronizacionSesion(this);
     }
@@ -164,10 +175,8 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
     public void onLogout() {
         if (sessionManager != null) sessionManager.borrarSesion();
 
-        setExpandirContenedor(false); // Retrae el panel al 40%
+        setExpandirContenedor(false);
 
-        // 🔥 NUEVO: Limpiamos la tabla de mesas físicas en la Base de Datos
-        // para que el siguiente operario empiece con el local en cero.
         java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
             AppDatabase.getInstance(this).mesaDao().eliminarTodasLasMesas();
         });

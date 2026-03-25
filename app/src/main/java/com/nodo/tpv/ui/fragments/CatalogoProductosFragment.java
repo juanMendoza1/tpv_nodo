@@ -11,6 +11,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
@@ -18,11 +19,14 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.ProductoAdapter;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.entities.Producto;
+import com.nodo.tpv.viewmodel.PedidoViewModel;
 import com.nodo.tpv.viewmodel.ProductoViewModel;
+
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -31,6 +35,7 @@ import java.util.Locale;
 
 public class CatalogoProductosFragment extends Fragment {
     private ProductoViewModel productoViewModel;
+    private PedidoViewModel pedidoViewModel;
     private int idClienteSeleccionado;
 
     private Button btnFinalizarSeleccion;
@@ -60,7 +65,10 @@ public class CatalogoProductosFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        // Instanciamos ambos ViewModels
         productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+        pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
 
         if (getArguments() != null) {
             idClienteSeleccionado = getArguments().getInt("id_cliente");
@@ -78,8 +86,7 @@ public class CatalogoProductosFragment extends Fragment {
         // --- 2. CONFIGURAR RESUMEN (Lógica reactiva a la DB) ---
         rvResumen.setLayoutManager(new LinearLayoutManager(getContext()));
         resumenAdapter = new ResumenContableAdapter(productoItem -> {
-            // El idProducto aquí contiene el idDetalle de la DB. Cambiamos estado a CANCELADO.
-            productoViewModel.eliminarDetallePendiente(productoItem.idProducto);
+            pedidoViewModel.eliminarDetallePendiente(productoItem.idProducto);
             Toast.makeText(getContext(), "Producto quitado", Toast.LENGTH_SHORT).show();
         });
         rvResumen.setAdapter(resumenAdapter);
@@ -89,7 +96,7 @@ public class CatalogoProductosFragment extends Fragment {
 
         // --- 4. OBSERVADOR DE PENDIENTES (BADGE DE BOLSA) ---
         if (idClienteSeleccionado == 0) {
-            productoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), listaPendientes -> {
+            pedidoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), listaPendientes -> {
                 if (listaPendientes != null && !listaPendientes.isEmpty()) {
                     cardResumenContable.setVisibility(View.VISIBLE);
                     List<Producto> visuales = new ArrayList<>();
@@ -98,8 +105,11 @@ public class CatalogoProductosFragment extends Fragment {
                     for (DetalleHistorialDuelo d : listaPendientes) {
                         Producto p = new Producto();
                         p.idProducto = d.idDetalle;
-                        p.setNombreProducto(d.nombreProducto);
-                        p.setPrecioProducto(d.precioEnVenta);
+
+                        // CORRECCIÓN: Acceso directo a las propiedades en lugar de set()
+                        p.nombreProducto = d.nombreProducto;
+                        p.precioProducto = d.precioEnVenta;
+
                         visuales.add(p);
                         totalSuma = totalSuma.add(d.precioEnVenta);
                     }
@@ -113,7 +123,7 @@ public class CatalogoProductosFragment extends Fragment {
 
         // --- 5. BOTÓN LIMPIAR BOLSA ---
         view.findViewById(R.id.btnLimpiarApuesta).setOnClickListener(v -> {
-            productoViewModel.cancelarMunicionPendienteMesa(idMesaActual);
+            pedidoViewModel.cancelarMunicionPendienteMesa(idMesaActual);
             Toast.makeText(getContext(), "Bolsa vaciada", Toast.LENGTH_SHORT).show();
         });
 
@@ -129,12 +139,9 @@ public class CatalogoProductosFragment extends Fragment {
         rvProductos.setAdapter(adapter);
         adapter.setOnProductoClickListener(this::mostrarDialogoCantidad);
 
-        // CAMBIO CLAVE: Observamos directamente el LiveData de Room.
-        // Cada vez que 'refrescarStockSilencioso' actualice la DB, esto se dispara solo.
         productoViewModel.getProductosLiveData().observe(getViewLifecycleOwner(), lista -> {
             if (lista != null) {
                 adapter.setProductos(lista);
-                // El adapter (actualizado previamente) se encarga de bloquear las cards con stock 0
             }
         });
 
@@ -143,7 +150,6 @@ public class CatalogoProductosFragment extends Fragment {
         long empresaId = sessionManager.getEmpresaId();
 
         if (empresaId > 0) {
-            // Disparamos la actualización desde el servidor en segundo plano
             productoViewModel.refrescarStockSilencioso(empresaId);
         }
     }
@@ -169,9 +175,10 @@ public class CatalogoProductosFragment extends Fragment {
         Button btnMenos = dialogView.findViewById(R.id.btnMenos);
         Button btnConfirmar = dialogView.findViewById(R.id.btnConfirmarAgregar);
 
-        ((TextView)dialogView.findViewById(R.id.tvNombreConfirmar)).setText(producto.getNombreProducto());
+        // CORRECCIÓN: Acceso directo a las variables de nombre y precio
+        ((TextView)dialogView.findViewById(R.id.tvNombreConfirmar)).setText(producto.nombreProducto);
         ((TextView)dialogView.findViewById(R.id.tvPrecioConfirmar)).setText(
-                NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(producto.getPrecioProducto())
+                NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(producto.precioProducto)
         );
 
         final int[] contadorLocal = {1};
@@ -192,15 +199,12 @@ public class CatalogoProductosFragment extends Fragment {
 
         btnConfirmar.setOnClickListener(v -> {
             if (idClienteSeleccionado == 0) {
-                // Modo Arena: Se inserta directo a DB como PENDIENTE
-                productoViewModel.insertarMunicionDueloPendiente(idMesaActual, producto, contadorLocal[0]);
-                Toast.makeText(getContext(), "Pedido enviado al Badge ⏳", Toast.LENGTH_SHORT).show();
+                pedidoViewModel.insertarMunicionDueloPendiente(idMesaActual, producto, contadorLocal[0]);
+                Toast.makeText(getContext(), "Pedido enviado al Badge \u23F3", Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
-                // No cerramos el fragmento para que pueda seguir pidiendo
             } else {
-                // Modo Cliente Individual
-                productoViewModel.insertarConsumoDirectoEntregado(idClienteSeleccionado, producto, contadorLocal[0]);
-                Toast.makeText(getContext(), "Producto cargado ✅", Toast.LENGTH_SHORT).show();
+                pedidoViewModel.insertarConsumoDirectoEntregado(idClienteSeleccionado, producto, contadorLocal[0]);
+                Toast.makeText(getContext(), "Producto cargado \u2705", Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
                 requireActivity().getSupportFragmentManager().popBackStack();
             }
@@ -232,8 +236,11 @@ public class CatalogoProductosFragment extends Fragment {
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
             Producto p = items.get(position);
-            holder.tvNombre.setText(p.getNombreProducto());
-            holder.tvPrecio.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(p.getPrecioProducto()));
+
+            // CORRECCIÓN: Acceso directo a p.nombreProducto y p.precioProducto
+            holder.tvNombre.setText(p.nombreProducto);
+            holder.tvPrecio.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(p.precioProducto));
+
             holder.btnDelete.setOnClickListener(v -> listener.onDelete(p));
         }
 

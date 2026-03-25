@@ -1,6 +1,5 @@
 package com.nodo.tpv.ui.fragments;
 
-import android.animation.ObjectAnimator;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -27,7 +26,6 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -39,8 +37,9 @@ import com.nodo.tpv.adapters.ClienteAdapter;
 import com.nodo.tpv.adapters.DetalleTicketAdapter;
 import com.nodo.tpv.data.dto.DetalleConNombre;
 import com.nodo.tpv.data.entities.Cliente;
+import com.nodo.tpv.viewmodel.ArenaViewModel;
 import com.nodo.tpv.viewmodel.ClienteViewModel;
-import com.nodo.tpv.viewmodel.ProductoViewModel;
+import com.nodo.tpv.viewmodel.PedidoViewModel;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -70,8 +69,11 @@ public class ListaClientesFragment extends Fragment {
 
     private RecyclerView recyclerView;
     private ClienteAdapter adapter;
+
+    // --- LOS 3 VIEWMODELS REQUERIDOS ---
     private ClienteViewModel clienteViewModel;
-    private ProductoViewModel productoViewModel;
+    private PedidoViewModel pedidoViewModel;
+    private ArenaViewModel arenaViewModel;
 
     private boolean isMenuOpen = false;
     private FloatingActionButton fabHistorial, fabPagarTodo, fabRegistrar, fabMain, fabModoDuelo;
@@ -130,11 +132,18 @@ public class ListaClientesFragment extends Fragment {
         TextView tvTituloMesa = view.findViewById(R.id.tvTituloMesa);
         TextView tvTipoJuego = view.findViewById(R.id.tvTituloMesaActual);
 
+        View containerDueloIncrustado = view.findViewById(R.id.containerInfoDueloIncrustado);
+        TextView tvResumenIncrustado = view.findViewById(R.id.tvResumenDueloIncrustado);
+        View indicadorEstado = view.findViewById(R.id.indicadorEstadoMesa);
+        TextView btnReanudarIncrustado = view.findViewById(R.id.btnReanudarIncrustado);
+
         if (tvTituloMesa != null) tvTituloMesa.setText("MESA #" + idMesaActual);
         if (tvTipoJuego != null) tvTipoJuego.setText(tipoJuegoMesa);
 
+        // INSTANCIACIÓN DE VIEWMODELS
         clienteViewModel = new ViewModelProvider(requireActivity()).get(ClienteViewModel.class);
-        productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+        pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
+        arenaViewModel = new ViewModelProvider(requireActivity()).get(ArenaViewModel.class);
 
         recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 3));
         adapter = new ClienteAdapter();
@@ -147,45 +156,56 @@ public class ListaClientesFragment extends Fragment {
             fabMain.show();
         });
 
-        // --- LÓGICA DEL BANNER ADAPTATIVO EXTENDIDO (RECLUTAMIENTO) ---
-        productoViewModel.getEnModoDuelo().observe(getViewLifecycleOwner(), activo -> {
+        arenaViewModel.getEnModoDuelo().observe(getViewLifecycleOwner(), activo -> {
+            View bgDuelo = view.findViewById(R.id.bgDueloIncrustado);
+            View marcadorCentral = view.findViewById(R.id.containerInfoDueloIncrustado);
+            TextView tvMesa = view.findViewById(R.id.tvTituloMesa);
+            TextView tvTipo = view.findViewById(R.id.tvTituloMesaActual);
+
             if (activo || esAdicionInd) {
-                cardDueloEnEspera.setVisibility(View.VISIBLE);
-                animarBannerGlow(cardDueloEnEspera);
+                // MODO DUELO: ACTIVAR "INVASIÓN"
+                bgDuelo.setVisibility(View.VISIBLE);
+                marcadorCentral.setVisibility(View.VISIBLE);
 
-                // 🔥 CONFIGURACIÓN DE BANNER EXTENDIDO
+                // Colores de contraste
+                tvMesa.setTextColor(Color.WHITE);
+                tvTipo.setTextColor(Color.parseColor("#B3FFFFFF")); // Blanco transparente
+                indicadorEstado.setBackgroundColor(Color.parseColor("#FFD600")); // Amarillo
+
                 if (esAdicionInd) {
-                    tvResumenDuelo.setText("⚡ MODO RECLUTAMIENTO: SELECCIONE CLIENTE PARA MESA #" + idMesaActual);
-                    tvResumenDuelo.setTextColor(Color.parseColor("#FFD600")); // Amarillo Neón alerta
-                    tvResumenDuelo.setLetterSpacing(0.04f); // Texto más largo/extendido
-                    btnReanudarDuelo.setText("CANCELAR");
+                    tvResumenIncrustado.setText("VS");
+                    btnReanudarIncrustado.setText("RECLUTANDO...");
                 } else {
-                    actualizarTextoBanner();
-                    tvResumenDuelo.setTextColor(Color.WHITE);
-                    tvResumenDuelo.setLetterSpacing(0f);
-                    btnReanudarDuelo.setText("REANUDAR");
+                    // Ponemos solo los números grandes en el centro
+                    tvResumenIncrustado.setText(arenaViewModel.obtenerMarcadorActualString().replaceAll("[^0-9\\- ]", ""));
+                    btnReanudarIncrustado.setText("REANUDAR DUELO");
                 }
-
-                // Bloqueamos visualmente los que ya están en cualquier duelo
-                List<Integer> idsEnArena = productoViewModel.obtenerIdsParticipantesArena();
-                if (adapter != null) adapter.actualizarBloqueoDuelo(idsEnArena);
-                fabModoDuelo.setBackgroundTintList(ColorStateList.valueOf(Color.GRAY));
             } else {
-                cardDueloEnEspera.setVisibility(View.GONE);
-                if (adapter != null) adapter.actualizarBloqueoDuelo(new ArrayList<>());
-                fabModoDuelo.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor("#FFD600")));
+                // MODO NORMAL: LIMPIO Y BLANCO
+                bgDuelo.setVisibility(View.GONE);
+                marcadorCentral.setVisibility(View.GONE);
+                tvMesa.setTextColor(Color.parseColor("#1A1A1B"));
+                tvTipo.setTextColor(Color.parseColor("#BDBDBD"));
+                indicadorEstado.setBackgroundColor(Color.parseColor("#1B5E20")); // Verde
             }
         });
 
-        productoViewModel.getScoreAzul().observe(getViewLifecycleOwner(), pts -> {
+// Listener para el nuevo botón incrustado
+        btnReanudarIncrustado.setOnClickListener(v -> {
+            v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
+            esAdicionInd = false;
+            reanudarDueloPausado();
+        });
+
+        arenaViewModel.getScoreAzul().observe(getViewLifecycleOwner(), pts -> {
             if (!esAdicionInd) actualizarTextoBanner();
         });
-        productoViewModel.getScoreRojo().observe(getViewLifecycleOwner(), pts -> {
+        arenaViewModel.getScoreRojo().observe(getViewLifecycleOwner(), pts -> {
             if (!esAdicionInd) actualizarTextoBanner();
         });
 
         btnReanudarDuelo.setOnClickListener(v -> {
-            esAdicionInd = false; // Rompemos el modo adición si se cancela o reanuda manualmente
+            esAdicionInd = false;
             reanudarDueloPausado();
         });
 
@@ -196,22 +216,18 @@ public class ListaClientesFragment extends Fragment {
 
             @Override
             public void onLongClickVersus(Cliente cliente) {
-                // 🔥 LÓGICA DE RECLUTAMIENTO RÁPIDO (SIN BUCLES)
                 if (esAdicionInd) {
-                    if (productoViewModel.obtenerIdsParticipantesArena().contains(cliente.idCliente)) {
+                    if (arenaViewModel.obtenerIdsParticipantesArena().contains(cliente.idCliente)) {
                         Toast.makeText(getContext(), "El cliente ya está participando en un duelo", Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    // Ejecutamos la adición persistente
-                    productoViewModel.agregarJugadorADueloIndActivo(idMesaActual, cliente);
-
-                    // Limpiamos estados locales antes de salir
+                    arenaViewModel.agregarJugadorADueloIndActivo(idMesaActual, cliente);
                     esAdicionInd = false;
                     modoSeleccionVersus = false;
                     if (adapter != null) adapter.setModoSeleccionVersus(false);
 
                     Toast.makeText(getContext(), cliente.alias.toUpperCase() + " sumado a Mesa #" + idMesaActual, Toast.LENGTH_SHORT).show();
-                    getParentFragmentManager().popBackStack(); // Regresa al duelo activo directamente
+                    getParentFragmentManager().popBackStack();
 
                 } else if (modoSeleccionVersus) {
                     if ("POOL".equals(tipoJuegoMesa)) adapter.excluirCliente(cliente.idCliente);
@@ -235,9 +251,8 @@ public class ListaClientesFragment extends Fragment {
                 tvEmpty.setVisibility(View.GONE);
                 recyclerView.setVisibility(View.VISIBLE);
 
-                // Bloqueamos si hay duelo activo O si venimos a reclutar
-                if (Boolean.TRUE.equals(productoViewModel.getEnModoDuelo().getValue()) || esAdicionInd) {
-                    adapter.actualizarBloqueoDuelo(productoViewModel.obtenerIdsParticipantesArena());
+                if (Boolean.TRUE.equals(arenaViewModel.getEnModoDuelo().getValue()) || esAdicionInd) {
+                    adapter.actualizarBloqueoDuelo(arenaViewModel.obtenerIdsParticipantesArena());
                 }
 
                 if (esAdicionInd) {
@@ -253,40 +268,30 @@ public class ListaClientesFragment extends Fragment {
     private void irAlFragmentArena() {
         Fragment fragmentArena;
         if ("3BANDAS".equals(tipoJuegoMesa)) {
-            // 🔥 REANUDACIÓN INTELIGENTE (SIN DUPLICAR DUELOS)
-            Boolean dueloActivo = productoViewModel.getEnModoDuelo().getValue();
+            Boolean dueloActivo = arenaViewModel.getEnModoDuelo().getValue();
             List<Cliente> participantesParaArena;
 
             if (Boolean.TRUE.equals(dueloActivo)) {
-                // Si ya hay un duelo, recuperamos los que están en la caché
-                participantesParaArena = productoViewModel.getIntegrantesAzulCacheados();
+                participantesParaArena = arenaViewModel.getIntegrantesAzulCacheados();
             } else {
-                // Si es un duelo nuevo, guardamos la selección inicial
-                productoViewModel.guardarIntegrantesDuelo(equipoAzul, new ArrayList<>());
                 participantesParaArena = equipoAzul;
             }
 
-            // --- 👇 ESTA ES LA MAGIA: Extraer solo los IDs 👇 ---
             ArrayList<Integer> idsClientes = new ArrayList<>();
             if (participantesParaArena != null) {
-                for (Cliente c : participantesParaArena) {
-                    idsClientes.add(c.idCliente);
-                }
+                for (Cliente c : participantesParaArena) idsClientes.add(c.idCliente);
             }
 
-            // Llamamos al Fragment pasando solo el arreglo de IDs
             fragmentArena = FragmentArenaDueloInd.newInstance(idsClientes, idMesaActual);
-            // ---------------------------------------------------
 
         } else {
-            // Lógica para POOL / GRUPAL
-            Boolean dueloActivo = productoViewModel.getEnModoDuelo().getValue();
+            Boolean dueloActivo = arenaViewModel.getEnModoDuelo().getValue();
             if (Boolean.TRUE.equals(dueloActivo)) {
                 fragmentArena = FragmentArenaDuelo.newInstance(new ArrayList<>(), new ArrayList<>(), tipoJuegoMesa, idMesaActual);
             } else {
                 Map<Integer, Integer> mapa = adapter.getMapaColoresPool();
                 if (mapa.isEmpty()) return;
-                productoViewModel.prepararDueloPoolMultiequipo(mapa, idMesaActual);
+                arenaViewModel.prepararDueloPoolMultiequipo(mapa, idMesaActual);
                 fragmentArena = FragmentArenaDuelo.newInstance(new ArrayList<>(), new ArrayList<>(), tipoJuegoMesa, idMesaActual);
             }
         }
@@ -310,7 +315,9 @@ public class ListaClientesFragment extends Fragment {
         rvItemsCuenta.setLayoutManager(new LinearLayoutManager(getContext()));
         DetalleTicketAdapter tAdapter = new DetalleTicketAdapter();
         rvItemsCuenta.setAdapter(tAdapter);
-        productoViewModel.obtenerDetalleCliente(cliente.idCliente).observe(getViewLifecycleOwner(), dt -> {
+
+        // 🔥 LÓGICA DE COBRO USANDO PedidoViewModel
+        pedidoViewModel.obtenerDetalleCliente(cliente.idCliente).observe(getViewLifecycleOwner(), dt -> {
             if (dt != null && !dt.isEmpty()) {
                 BigDecimal total = BigDecimal.ZERO;
                 for (DetalleConNombre d : dt) total = total.add(d.getSubtotal());
@@ -351,7 +358,7 @@ public class ListaClientesFragment extends Fragment {
         fabPagarTodo.setOnClickListener(v -> { toggleMenu(); confirmarPagoMasivo(); });
         fabModoDuelo.setOnClickListener(v -> {
             toggleMenu();
-            if (Boolean.TRUE.equals(productoViewModel.getEnModoDuelo().getValue())) reanudarDueloPausado();
+            if (Boolean.TRUE.equals(arenaViewModel.getEnModoDuelo().getValue())) reanudarDueloPausado();
             else if (!modoSeleccionVersus) iniciarSeleccionDuelo();
             else cancelarSeleccionDuelo();
         });
@@ -367,7 +374,6 @@ public class ListaClientesFragment extends Fragment {
         dv.findViewById(R.id.btnGuardar).setOnClickListener(v -> {
             String a = etA.getText().toString().trim();
             if (!a.isEmpty()) {
-                // 🔥 Ahora pasamos idMesaActual al guardar
                 clienteViewModel.guardarCliente(a, act.getText().toString(), idMesaActual);
                 d.dismiss();
             }
@@ -423,7 +429,7 @@ public class ListaClientesFragment extends Fragment {
         if (adapter != null) adapter.limpiarSelecciones();
     }
 
-    private void actualizarTextoBanner() { tvResumenDuelo.setText("Mesa en Duelo: " + productoViewModel.obtenerMarcadorActualString()); }
+    private void actualizarTextoBanner() { tvResumenDuelo.setText("Mesa en Duelo: " + arenaViewModel.obtenerMarcadorActualString()); }
     private void animarBannerGlow(View view) { view.setAlpha(0f); view.animate().alpha(1f).translationY(0f).setDuration(600).start(); }
     private void abrirHistorial() { requireActivity().getSupportFragmentManager().beginTransaction().replace(R.id.container_fragments, new HistorialVentasFragment()).addToBackStack(null).commit(); }
     private void abrirCatalogo(int idCliente) { requireActivity().getSupportFragmentManager().beginTransaction().replace(R.id.container_fragments, CatalogoProductosFragment.newInstance(idCliente, idMesaActual)).addToBackStack(null).commit(); }

@@ -36,7 +36,8 @@ import com.nodo.tpv.data.entities.BolaAnotada;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.ui.main.MainActivity;
-import com.nodo.tpv.viewmodel.ProductoViewModel;
+import com.nodo.tpv.viewmodel.ArenaViewModel;
+import com.nodo.tpv.viewmodel.PedidoViewModel;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -79,8 +80,10 @@ public class FragmentArenaDuelo extends Fragment {
     private boolean hayPendientesBloqueantes = false;
     private boolean pantallaExpandida = true;
 
-    // Datos y Lógica
-    private ProductoViewModel productoViewModel;
+    // --- LOS NUEVOS VIEWMODELS ---
+    private ArenaViewModel arenaViewModel;
+    private PedidoViewModel pedidoViewModel;
+
     private String tipoJuegoMesa;
     private int idMesaActual;
     private final String PIN_MAESTRO = "1234";
@@ -132,7 +135,11 @@ public class FragmentArenaDuelo extends Fragment {
         if (requireActivity() instanceof MainActivity) {
             ((MainActivity) requireActivity()).setExpandirContenedor(true);
         }
-        productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+
+        // INSTANCIAR LOS DOS VIEWMODELS
+        arenaViewModel = new ViewModelProvider(requireActivity()).get(ArenaViewModel.class);
+        pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
+
         scrollMarcadores = view.findViewById(R.id.scrollMarcadores);
 
         // 1. VINCULACIÓN DE ESTRUCTURA Y VIDEO
@@ -170,7 +177,7 @@ public class FragmentArenaDuelo extends Fragment {
             String loginOperativo = session.obtenerUsuario().login;
             int idOperativo = session.obtenerUsuario().idUsuario;
 
-            productoViewModel.despacharTodoLaMesa(idMesaActual, idOperativo, loginOperativo);
+            pedidoViewModel.despacharTodoLaMesa(idMesaActual, idOperativo, loginOperativo);
             toggleDespacho(false);
             Toast.makeText(getContext(), "Despachando productos...", Toast.LENGTH_SHORT).show();
         });
@@ -186,13 +193,13 @@ public class FragmentArenaDuelo extends Fragment {
         // --- BOTÓN VAR (ACTIVACIÓN DE STREAMING) ---
         view.findViewById(R.id.btnVAR).setOnClickListener(this::toggleModoVAR);
 
-        btnReglaGanador.setOnClickListener(v -> productoViewModel.actualizarReglaDuelo("GANADOR_SALVA"));
-        btnReglaTodos.setOnClickListener(v -> productoViewModel.actualizarReglaDuelo("TODOS_PAGAN"));
-        btnReglaUltimo.setOnClickListener(v -> productoViewModel.actualizarReglaDuelo("ULTIMO_PAGA"));
+        btnReglaGanador.setOnClickListener(v -> arenaViewModel.actualizarReglaDuelo("GANADOR_SALVA"));
+        btnReglaTodos.setOnClickListener(v -> arenaViewModel.actualizarReglaDuelo("TODOS_PAGAN"));
+        btnReglaUltimo.setOnClickListener(v -> arenaViewModel.actualizarReglaDuelo("ULTIMO_PAGA"));
 
         if (switchPin != null) {
             switchPin.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                if (buttonView.isPressed()) productoViewModel.actualizarSeguridadPinDuelo(isChecked);
+                if (buttonView.isPressed()) arenaViewModel.actualizarSeguridadPinDuelo(isChecked);
             });
         }
 
@@ -206,9 +213,9 @@ public class FragmentArenaDuelo extends Fragment {
         });
 
         // 6. OBSERVADORES
-        productoViewModel.recuperarDueloActivo(idMesaActual);
+        arenaViewModel.recuperarDueloActivo(idMesaActual);
 
-        productoViewModel.getReglaCobroDuelo().observe(getViewLifecycleOwner(), regla -> {
+        arenaViewModel.getReglaCobroDuelo().observe(getViewLifecycleOwner(), regla -> {
             if (regla != null) {
                 this.reglaActualSync = regla;
                 actualizarBotonesReglaUI(regla);
@@ -216,21 +223,21 @@ public class FragmentArenaDuelo extends Fragment {
             }
         });
 
-        productoViewModel.observarConteoPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), count -> {
+        pedidoViewModel.observarConteoPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), count -> {
             hayPendientesBloqueantes = (count != null && count > 0);
             tvBadgePendientes.setVisibility(hayPendientesBloqueantes ? View.VISIBLE : View.GONE);
             tvBadgePendientes.setText(String.valueOf(count));
             actualizarEstadoVisualMarcadores();
         });
 
-        productoViewModel.getListaApuestaEntregada().observe(getViewLifecycleOwner(), this::actualizarTextoBolsa);
+        arenaViewModel.getListaApuestaEntregada().observe(getViewLifecycleOwner(), this::actualizarTextoBolsa);
 
-        productoViewModel.getMapaColoresDuelo().observe(getViewLifecycleOwner(), mapa -> {
+        arenaViewModel.getMapaColoresDuelo().observe(getViewLifecycleOwner(), mapa -> {
             if (mapa != null && !mapa.isEmpty()) generarInterfazDinamica(mapa);
         });
 
-        productoViewModel.getScoresEquipos().observe(getViewLifecycleOwner(), scores -> vincularScoresExistentes());
-        productoViewModel.getDbTrigger().observe(getViewLifecycleOwner(), t -> vincularScoresExistentes());
+        arenaViewModel.getScoresEquipos().observe(getViewLifecycleOwner(), scores -> vincularScoresExistentes());
+        arenaViewModel.getDbTrigger().observe(getViewLifecycleOwner(), t -> vincularScoresExistentes());
     }
 
     private void configurarWebView() {
@@ -259,32 +266,27 @@ public class FragmentArenaDuelo extends Fragment {
         set.clone(root);
 
         if (isVarActive) {
-            // ACTIVAR VAR
             webViewCamara.setVisibility(View.VISIBLE);
             if (webViewCamara != null) {
                 webViewCamara.loadUrl(cameraUrl + "?t=" + System.currentTimeMillis());
             }
-            set.setGuidelinePercent(R.id.guidelineVAR, 0.45f); // Expande la cámara
+            set.setGuidelinePercent(R.id.guidelineVAR, 0.45f);
 
-            // 🔥 OCULTAMOS LOS MARCADORES
             if (scrollMarcadores != null) {
                 scrollMarcadores.setVisibility(View.GONE);
             }
         } else {
-            // DESACTIVAR VAR
             if (webViewCamara != null) {
                 webViewCamara.loadUrl("about:blank");
                 webViewCamara.setVisibility(View.GONE);
             }
-            set.setGuidelinePercent(R.id.guidelineVAR, 0.0f); // Oculta la cámara
+            set.setGuidelinePercent(R.id.guidelineVAR, 0.0f);
 
-            // 🔥 MOSTRAMOS LOS MARCADORES DE NUEVO
             if (scrollMarcadores != null) {
                 scrollMarcadores.setVisibility(View.VISIBLE);
             }
         }
 
-        // Esta línea hace que ocultar los marcadores y expandir la cámara se vea como una animación fluida
         TransitionManager.beginDelayedTransition(root);
         set.applyTo(root);
     }
@@ -314,7 +316,6 @@ public class FragmentArenaDuelo extends Fragment {
             return;
         }
 
-        // 🔥 CORRECCIÓN DEL BUG: Usamos la lista que ya está precargada y sincronizada
         if (municionActual == null || municionActual.isEmpty()) {
             Toast.makeText(getContext(), "No hay munición en juego", Toast.LENGTH_SHORT).show();
             return;
@@ -329,9 +330,9 @@ public class FragmentArenaDuelo extends Fragment {
 
     private void ejecutarImpactoDirecto(int colorEquipo) {
         requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
-        productoViewModel.aplicarDanioMultiequipo(colorEquipo);
+        arenaViewModel.aplicarDanioMultiequipo(colorEquipo);
         dispararCelebracion();
-        estallarYLimpiarMesa(); // ¡Boom! Explota la mesa
+        estallarYLimpiarMesa();
         Toast.makeText(getContext(), "¡Punto registrado!", Toast.LENGTH_SHORT).show();
     }
 
@@ -343,9 +344,9 @@ public class FragmentArenaDuelo extends Fragment {
                 .setView(vPin)
                 .setPositiveButton("OK", (d, w) -> {
                     if (PIN_MAESTRO.equals(etPin.getText().toString())) {
-                        productoViewModel.aplicarDanioMultiequipo(colorEquipo);
+                        arenaViewModel.aplicarDanioMultiequipo(colorEquipo);
                         dispararCelebracion();
-                        estallarYLimpiarMesa(); // ¡Boom! Explota la mesa tras el PIN
+                        estallarYLimpiarMesa();
                     } else {
                         Toast.makeText(getContext(), "PIN Incorrecto", Toast.LENGTH_SHORT).show();
                     }
@@ -353,7 +354,7 @@ public class FragmentArenaDuelo extends Fragment {
     }
 
     private void vincularScoresExistentes() {
-        Map<Integer, Integer> scores = productoViewModel.getScoresEquipos().getValue();
+        Map<Integer, Integer> scores = arenaViewModel.getScoresEquipos().getValue();
         if (scores == null) return;
         for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
             View v = containerMarcadoresDinamicos.getChildAt(i);
@@ -380,11 +381,11 @@ public class FragmentArenaDuelo extends Fragment {
             final int idOp = (user != null) ? user.idUsuario : 0;
             final String loginOp = (user != null) ? user.login : "desconocido";
 
-            productoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
+            pedidoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
                 if (lista != null) {
                     rvDespachoLateral.setLayoutManager(new LinearLayoutManager(getContext()));
                     rvDespachoLateral.setAdapter(new LogBatallaAdapter(lista, item -> {
-                        productoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
+                        pedidoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
                     }));
                     if (lista.isEmpty() && despachoVisible) toggleDespacho(false);
                 }
@@ -397,7 +398,8 @@ public class FragmentArenaDuelo extends Fragment {
     private void toggleHistorial(boolean mostrar) {
         if (historialVisible == mostrar) return;
         if (mostrar) {
-            productoViewModel.obtenerHistorialItemsActivo().observe(getViewLifecycleOwner(), lista -> {
+            // Utilizamos obtenerDetalleDeudaRegistrada del PedidoViewModel para ver el historial
+            pedidoViewModel.obtenerDetalleDeudaRegistrada(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
                 if (lista != null) {
                     rvHistorialLateral.setLayoutManager(new LinearLayoutManager(getContext()));
                     rvHistorialLateral.setAdapter(new LogBatallaAdapter(lista, item -> {}));
@@ -430,13 +432,13 @@ public class FragmentArenaDuelo extends Fragment {
     }
 
     private void actualizarTextoBolsa(List<Producto> productos) {
-        // 🔥 Guardamos la munición en vivo para consultarla instantáneamente luego
         this.municionActual = productos;
 
         BigDecimal total = BigDecimal.ZERO;
         if (productos != null) {
             for (Producto p : productos) {
-                total = total.add(p.getPrecioProducto());
+                // CORRECCIÓN: Acceso directo a la variable precioProducto
+                total = total.add(p.precioProducto);
             }
         }
 
@@ -475,7 +477,7 @@ public class FragmentArenaDuelo extends Fragment {
         new MaterialAlertDialogBuilder(requireContext(), R.style.MaterialAlertDialog_Garena)
                 .setTitle("FINALIZAR BATALLA")
                 .setPositiveButton("SÍ", (d, w) -> {
-                    productoViewModel.finalizarDueloCompleto(idMesaActual, "POOL");
+                    arenaViewModel.finalizarDueloCompleto(idMesaActual, "POOL");
                     getParentFragmentManager().popBackStack();
                 }).show();
     }
@@ -493,7 +495,7 @@ public class FragmentArenaDuelo extends Fragment {
     private void gestionarReglaUltimoPaga(int colorEquipoTocado) {
         if (equiposSalvadosEnRonda.contains(colorEquipoTocado)) return;
 
-        Map<Integer, Integer> mapa = productoViewModel.getMapaColoresDuelo().getValue();
+        Map<Integer, Integer> mapa = arenaViewModel.getMapaColoresDuelo().getValue();
         if (mapa == null) return;
 
         java.util.Set<Integer> coloresUnicos = new java.util.HashSet<>(mapa.values());
@@ -541,9 +543,9 @@ public class FragmentArenaDuelo extends Fragment {
     }
 
     private void aplicarCierreRondaUltimoPaga(int colorGanador, int colorPerdedor) {
-        productoViewModel.aplicarDanioUltimoPaga(colorGanador, colorPerdedor);
+        arenaViewModel.aplicarDanioUltimoPaga(colorGanador, colorPerdedor);
         dispararCelebracion();
-        estallarYLimpiarMesa(); // ¡Boom! Explota la mesa
+        estallarYLimpiarMesa();
         equiposSalvadosEnRonda.clear();
         animarRestauracionUI();
     }
@@ -632,7 +634,6 @@ public class FragmentArenaDuelo extends Fragment {
                 layoutInventarioBolas.setVisibility(View.VISIBLE);
             }
 
-            // 1. Lógica del Botón ROJO (Falta / Malas)
             View btnFalta = vMarcador.findViewById(R.id.btnFalta);
             if (btnFalta != null) {
                 btnFalta.setOnClickListener(v -> {
@@ -646,7 +647,6 @@ public class FragmentArenaDuelo extends Fragment {
                 });
             }
 
-            // 2. Lógica del Botón CYAN (Anotar Bola)
             View btnAnotarBola = vMarcador.findViewById(R.id.btnAnotarBola);
             if (btnAnotarBola != null) {
                 btnAnotarBola.setOnClickListener(v -> {
@@ -659,8 +659,7 @@ public class FragmentArenaDuelo extends Fragment {
                 });
             }
 
-            // 3. Pintar las bolas del equipo en vivo
-            String uuidActual = productoViewModel.getUuidDueloActual();
+            String uuidActual = arenaViewModel.getUuidDueloActual();
             if (uuidActual != null && containerBolas != null) {
                 AppDatabase.getInstance(requireContext()).bolaDueloDao().observarBolasDuelo(uuidActual)
                         .observe(getViewLifecycleOwner(), bolasAnotadas -> {
@@ -668,19 +667,25 @@ public class FragmentArenaDuelo extends Fragment {
                                 containerBolas.removeAllViews();
 
                                 for (BolaAnotada bola : bolasAnotadas) {
-                                    if (bola.getColorEquipo() == color) {
+                                    // CORRECCIÓN: Acceso directo a colorEquipo
+                                    if (bola.colorEquipo == color) {
                                         View bolaView = getLayoutInflater().inflate(R.layout.item_bola_visual, containerBolas, false);
                                         TextView tvNum = bolaView.findViewById(R.id.tvBolaNumero);
-                                        tvNum.setText(String.valueOf(bola.getNumeroBola()));
+
+                                        // CORRECCIÓN: Acceso directo a numeroBola
+                                        tvNum.setText(String.valueOf(bola.numeroBola));
                                         tvNum.getBackground().setTint(color);
                                         tvNum.setTextColor(Color.WHITE);
 
                                         bolaView.setOnLongClickListener(v -> {
                                             requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                                             new Thread(() -> {
-                                                AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, bola.getNumeroBola());
+                                                // CORRECCIÓN: Acceso directo a numeroBola
+                                                AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, bola.numeroBola);
                                             }).start();
-                                            Toast.makeText(getContext(), "Bola " + bola.getNumeroBola() + " anulada.", Toast.LENGTH_SHORT).show();
+
+                                            // CORRECCIÓN: Acceso directo a numeroBola
+                                            Toast.makeText(getContext(), "Bola " + bola.numeroBola + " anulada.", Toast.LENGTH_SHORT).show();
                                             return true;
                                         });
 
@@ -691,7 +696,6 @@ public class FragmentArenaDuelo extends Fragment {
                         });
             }
 
-            // 🔥 SCORE MAESTRO (CLICK SOSTENIDO) Y EXPLOSIÓN
             vMarcador.setOnLongClickListener(v -> {
                 if (hayPendientesBloqueantes) {
                     Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
@@ -699,10 +703,8 @@ public class FragmentArenaDuelo extends Fragment {
                     return true;
                 }
 
-                // Vibración fuerte para confirmar que el toque fue detectado
                 requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
 
-                // Intentamos procesar el punto. Si todo está bien, internamente se sumará y estallarán las bolas
                 if ("ULTIMO_PAGA".equals(reglaActualSync)) {
                     gestionarReglaUltimoPaga(color);
                 } else {
@@ -714,15 +716,14 @@ public class FragmentArenaDuelo extends Fragment {
 
             containerMarcadoresDinamicos.addView(vMarcador);
 
-            // --- CARGA DEL PELOTÓN (BURBUJAS DE JUGADORES) ---
             View vPeloton = getLayoutInflater().inflate(R.layout.item_peloton_arena, containerGuerrerosDinamicos, false);
             ((ShapeableImageView) vPeloton.findViewById(R.id.imgAvatarMando)).setStrokeColor(ColorStateList.valueOf(color));
             FlexboxLayout followers = vPeloton.findViewById(R.id.containerSeguidores);
 
             for (Integer id : equipos.get(color)) {
                 View burbuja = getLayoutInflater().inflate(R.layout.item_cliente_burbuja, followers, false);
-                ((TextView) burbuja.findViewById(R.id.tvNombreBurbuja)).setText(productoViewModel.obtenerAliasCliente(id));
-                productoViewModel.obtenerSaldoIndividualDuelo(id).observe(getViewLifecycleOwner(), saldo -> {
+                ((TextView) burbuja.findViewById(R.id.tvNombreBurbuja)).setText(arenaViewModel.obtenerAliasCliente(id));
+                arenaViewModel.obtenerSaldoIndividualDuelo(id).observe(getViewLifecycleOwner(), saldo -> {
                     if (saldo != null) ((TextView) burbuja.findViewById(R.id.tvSaldoClienteBurbuja)).setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(saldo));
                 });
                 followers.addView(burbuja);
@@ -734,7 +735,6 @@ public class FragmentArenaDuelo extends Fragment {
         actualizarEstadoVisualMarcadores();
     }
 
-    // --- PANEL DEL DESLIZADOR DE MALAS (FALTAS) ---
     private void abrirPanelSeleccionMalas(int colorEquipo, LinearLayout containerMalasVisual) {
         android.app.Dialog dialog = new android.app.Dialog(requireContext(), android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
         View view = getLayoutInflater().inflate(R.layout.dialog_seleccion_malas_pro, null);
@@ -793,7 +793,6 @@ public class FragmentArenaDuelo extends Fragment {
         dialog.show();
     }
 
-    // --- PANEL DE BOLAS EN TRIÁNGULO ---
     private void abrirPanelSeleccionBolas(int colorEquipo) {
         android.app.Dialog dialog = new android.app.Dialog(requireContext(), android.R.style.Theme_Translucent_NoTitleBar_Fullscreen);
         View view = getLayoutInflater().inflate(R.layout.dialog_seleccion_bolas, null);
@@ -808,7 +807,7 @@ public class FragmentArenaDuelo extends Fragment {
         view.findViewById(R.id.btnConfirmarBolas).setOnClickListener(v -> dialog.dismiss());
 
         new Thread(() -> {
-            String uuidActual = productoViewModel.getUuidDueloActual();
+            String uuidActual = arenaViewModel.getUuidDueloActual();
             List<Integer> bolasBloqueadas = AppDatabase.getInstance(requireContext()).bolaDueloDao().obtenerBolasYaAnotadasSincrono(uuidActual);
 
             requireActivity().runOnUiThread(() -> {
@@ -876,14 +875,12 @@ public class FragmentArenaDuelo extends Fragment {
         dialog.show();
     }
 
-    // --- NUEVA ANIMACIÓN: EXPLOSIÓN DE BOLAS Y LIMPIEZA DE MESA ---
-    // --- NUEVA ANIMACIÓN: EXPLOSIÓN DE BOLAS RALENTIZADA ("MÁS CHEVRE") ---
     private void estallarYLimpiarMesa() {
-        String uuidActual = productoViewModel.getUuidDueloActual();
+        String uuidActual = arenaViewModel.getUuidDueloActual();
         if (uuidActual == null) return;
 
         boolean hayAnimacion = false;
-        long duracionTotalAnimacion = 1200; // Duración completa del inflado + explosión
+        long duracionTotalAnimacion = 1200;
 
         if (containerMarcadoresDinamicos == null) return;
 
@@ -891,37 +888,31 @@ public class FragmentArenaDuelo extends Fragment {
             View marcadorTeam = containerMarcadoresDinamicos.getChildAt(i);
             if (!(marcadorTeam instanceof MaterialCardView)) continue;
 
-            // Obtenemos el color del equipo de la tarjeta (el borde)
             int colorEquipo = ((MaterialCardView) marcadorTeam).getStrokeColor();
 
-            // 1. Estallar Malas (Faltas)
             LinearLayout contenedorMalas = marcadorTeam.findViewById(R.id.containerMalasVisual);
             if (contenedorMalas != null) {
-                // Hacemos una copia de la lista de vistas para iterar de forma segura
                 List<View> vistasMalas = new ArrayList<>();
                 for (int j = 0; j < contenedorMalas.getChildCount(); j++) vistasMalas.add(contenedorMalas.getChildAt(j));
 
                 for (View v : vistasMalas) {
-                    estallarUnaVistaConParticulas(v, colorEquipo); // ¡Boom individual!
+                    estallarUnaVistaConParticulas(v, colorEquipo);
                     hayAnimacion = true;
                 }
             }
 
-            // 2. Estallar Bolas
             FlexboxLayout contenedorBolas = marcadorTeam.findViewById(R.id.containerBolasIngresadas);
             if (contenedorBolas != null) {
                 List<View> vistasBolas = new ArrayList<>();
                 for (int j = 0; j < contenedorBolas.getChildCount(); j++) vistasBolas.add(contenedorBolas.getChildAt(j));
 
                 for (View v : vistasBolas) {
-                    estallarUnaVistaConParticulas(v, colorEquipo); // ¡Boom individual!
+                    estallarUnaVistaConParticulas(v, colorEquipo);
                     hayAnimacion = true;
                 }
             }
         }
 
-        // 🔥 SINCRONIZACIÓN: Esperamos a que termine la explosión lenta para borrar los datos
-        // Usamos una duración ligeramente mayor para asegurar que todas las partículas desaparezcan
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             new Thread(() -> {
                 AppDatabase.getInstance(requireContext()).bolaDueloDao().limpiarMesa(uuidActual);
@@ -934,40 +925,33 @@ public class FragmentArenaDuelo extends Fragment {
         ViewGroup root = (ViewGroup) vistaABorrar.getRootView();
         if (root == null) return;
 
-        // 1. OBTENER POSICIÓN CENTRADA DE LA VISTA
         int[] location = new int[2];
         vistaABorrar.getLocationOnScreen(location);
         int centerX = location[0] + (vistaABorrar.getWidth() / 2);
         int centerY = location[1] + (vistaABorrar.getHeight() / 2);
 
-        // 2. ANIMACIÓN DE "INFLADO" (Precarga)
         long duracionInflado = 400;
         vistaABorrar.animate()
-                .scaleX(1.8f) // Se infla casi al doble
+                .scaleX(1.8f)
                 .scaleY(1.8f)
-                .alpha(0.5f) // Se vuelve un poco transparente
+                .alpha(0.5f)
                 .setDuration(duracionInflado)
-                .setInterpolator(new android.view.animation.OvershootInterpolator()) // Efecto pop
+                .setInterpolator(new android.view.animation.OvershootInterpolator())
                 .withEndAction(() -> {
-                    // --- PUNTO DE EXPLOSIÓN: La bola desaparece ---
                     vistaABorrar.setVisibility(View.INVISIBLE);
 
-                    // 3. GENERAR Y ANIMAR PARTÍCULAS
-                    int totalParticulas = 30; // Cantidad de "fragmentos"
+                    int totalParticulas = 30;
                     long duracionVueloParticulas = 800;
 
                     for (int i = 0; i < totalParticulas; i++) {
-                        // Crear la partícula visualmente
                         View particula = new View(requireContext());
                         particula.setBackgroundResource(R.drawable.item_particula_visual);
-                        particula.getBackground().setTint(colorExplosion); // Del color del equipo
+                        particula.getBackground().setTint(colorExplosion);
                         particula.setAlpha(1.0f);
 
-                        // Tamaño aleatorio para la partícula
-                        int size = 10 + random.nextInt(15); // Entre 10dp y 25dp
+                        int size = 10 + random.nextInt(15);
                         int sizePx = (int) (size * getResources().getDisplayMetrics().density);
 
-                        // Posicionarla en el centro exacto de la bola que explotó
                         ConstraintLayout.LayoutParams params = new ConstraintLayout.LayoutParams(sizePx, sizePx);
                         params.leftToLeft = ConstraintLayout.LayoutParams.PARENT_ID;
                         params.topToTop = ConstraintLayout.LayoutParams.PARENT_ID;
@@ -975,27 +959,23 @@ public class FragmentArenaDuelo extends Fragment {
                         particula.setX(centerX - (sizePx / 2));
                         particula.setY(centerY - (sizePx / 2));
 
-                        // Añaadirla al root view (encima de todo)
                         root.addView(particula);
 
-                        // Calcular dirección y distancia aleatoria ("vuelo")
                         float angulo = random.nextFloat() * 360f;
-                        float distancia = 150f + random.nextFloat() * 300f; // Vuelan entre 150 y 450px
+                        float distancia = 150f + random.nextFloat() * 300f;
 
                         float tX = (float) (distancia * Math.cos(Math.toRadians(angulo)));
                         float tY = (float) (distancia * Math.sin(Math.toRadians(angulo)));
 
-                        // Animación de "vuelo" de la partícula
                         particula.animate()
                                 .translationXBy(tX)
                                 .translationYBy(tY)
-                                .scaleX(0.2f) // Se achican al final
+                                .scaleX(0.2f)
                                 .scaleY(0.2f)
-                                .alpha(0f)    // Se desvanecen
+                                .alpha(0f)
                                 .setDuration(duracionVueloParticulas)
-                                .setInterpolator(new DecelerateInterpolator()) // Frenan al final
+                                .setInterpolator(new DecelerateInterpolator())
                                 .withEndAction(() -> {
-                                    // 🔥 LIMPIEZA: Borrar la partícula de memoria cuando termine
                                     root.removeView(particula);
                                 })
                                 .start();
@@ -1003,6 +983,4 @@ public class FragmentArenaDuelo extends Fragment {
                 })
                 .start();
     }
-
-
 }

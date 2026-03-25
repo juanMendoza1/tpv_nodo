@@ -36,12 +36,14 @@ import com.nodo.tpv.adapters.BolsaDetalleAdapter;
 import com.nodo.tpv.adapters.ClienteAdapter;
 import com.nodo.tpv.adapters.LogDeudaAdapter;
 import com.nodo.tpv.adapters.LogResumenSalidaAdapter;
+import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.DueloTemporalInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.ui.main.MainActivity;
+import com.nodo.tpv.viewmodel.ArenaViewModel;
 import com.nodo.tpv.viewmodel.ClienteViewModel;
-import com.nodo.tpv.viewmodel.ProductoViewModel;
+import com.nodo.tpv.viewmodel.PedidoViewModel;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
@@ -55,8 +57,11 @@ import android.util.TypedValue;
 
 public class FragmentArenaDueloInd extends Fragment {
 
-    private ProductoViewModel productoViewModel;
+    // --- NUEVOS VIEWMODELS ---
+    private ArenaViewModel arenaViewModel;
+    private PedidoViewModel pedidoViewModel;
     private ClienteViewModel clienteViewModel;
+
     private List<Cliente> participantes = new ArrayList<>();
 
     private boolean bolsaEsVisible = false;
@@ -117,7 +122,6 @@ public class FragmentArenaDueloInd extends Fragment {
     public static FragmentArenaDueloInd newInstance(ArrayList<Integer> idsSeleccionados, int idMesa) {
         FragmentArenaDueloInd fragment = new FragmentArenaDueloInd();
         Bundle args = new Bundle();
-        // Usamos putIntegerArrayList en lugar de objetos serializables/parcelables
         args.putIntegerArrayList("ids_clientes", idsSeleccionados);
         args.putInt("id_mesa", idMesa);
         fragment.setArguments(args);
@@ -141,10 +145,12 @@ public class FragmentArenaDueloInd extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
-        productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
+
+        // INSTANCIACIÓN DE LOS MÁNAGERS
+        arenaViewModel = new ViewModelProvider(requireActivity()).get(ArenaViewModel.class);
+        pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
         clienteViewModel = new ViewModelProvider(requireActivity()).get(ClienteViewModel.class);
 
-        // --- 1. RECUPERAR LOS IDs DESDE EL BUNDLE ---
         ArrayList<Integer> idsClientes = new ArrayList<>();
         if (getArguments() != null) {
             idMesaActual = getArguments().getInt("id_mesa");
@@ -153,22 +159,17 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         }
 
-        // --- 2. INICIAR DUELO DE FORMA ASÍNCRONA ---
-        // Le pasamos los IDs al ViewModel. Él los buscará en BD y nos avisará cuando termine.
         if (idsClientes != null && !idsClientes.isEmpty()) {
-            productoViewModel.iniciarDueloIndPersistente(idsClientes, idMesaActual);
+            arenaViewModel.iniciarDueloIndPersistente(idsClientes, idMesaActual);
         }
 
-        // --- 3. OBSERVAR CUANDO LOS CLIENTES ESTÉN LISTOS ---
-        // Como la carga es asíncrona, esperamos al dbTrigger para pintar la UI
-        productoViewModel.getDbTrigger().observe(getViewLifecycleOwner(), trigger -> {
-            participantes = productoViewModel.getIntegrantesAzulCacheados();
+        arenaViewModel.getDbTrigger().observe(getViewLifecycleOwner(), trigger -> {
+            participantes = arenaViewModel.getIntegrantesAzulCacheados();
             if (participantes != null && !participantes.isEmpty()) {
-                setupMiniMarcadores(view); // Pintamos las burbujas solo cuando ya tenemos los datos
+                setupMiniMarcadores(view);
             }
         });
 
-        // 4. Vincular Vistas principales
         lottieCelebration = view.findViewById(R.id.lottieCelebration);
         tvValorEnJuego = view.findViewById(R.id.tvProductoEnJuego);
         tvItemsBolsa = view.findViewById(R.id.tvItemsBolsa);
@@ -181,11 +182,9 @@ public class FragmentArenaDueloInd extends Fragment {
         rvRecluta = view.findViewById(R.id.rvReclutamiento);
         btnConfirmarRecluta = view.findViewById(R.id.btnConfirmarRecluta);
 
-        // 5. Vincular Panel de Liquidación Individual (Nuevo)
         panelLiquidacion = view.findViewById(R.id.panelLiquidacionIndividual);
         rvResumenSalida = view.findViewById(R.id.rvDuelosIndividualLiq);
 
-        // Inicializar el nuevo adaptador de liquidación
         liquidacionAdapter = new LogResumenSalidaAdapter();
         rvResumenSalida.setLayoutManager(new LinearLayoutManager(getContext()));
         rvResumenSalida.setAdapter(liquidacionAdapter);
@@ -194,13 +193,11 @@ public class FragmentArenaDueloInd extends Fragment {
             ((MainActivity) requireActivity()).setExpandirContenedor(true);
         }
 
-        // --- SECCIÓN RECYCLERVIEWS INTERCAMBIABLES (Arena General) ---
         RecyclerView rvIntercambiable = view.findViewById(R.id.rvDetalleBolsaExpandida);
         bolsaDetalleAdapter = new BolsaDetalleAdapter();
         logDeudaAdapter = new LogDeudaAdapter();
         rvIntercambiable.setLayoutManager(new LinearLayoutManager(getContext()));
 
-        // --- LÓGICA DE TARJETA BOLSA (MUNICIÓN PENDIENTE) ---
         if (cardBolsaExpandible != null) {
             cardBolsaExpandible.setOnClickListener(v -> {
                 bolsaEsVisible = !bolsaEsVisible;
@@ -218,7 +215,7 @@ public class FragmentArenaDueloInd extends Fragment {
                                 rvIntercambiable.setAlpha(0f);
                                 rvIntercambiable.animate().alpha(1f).setDuration(300).start();
                             }).start();
-                    productoViewModel.getBolsaIndEntregada().observe(getViewLifecycleOwner(), bolsaDetalleAdapter::setLista);
+                    arenaViewModel.getBolsaIndEntregada().observe(getViewLifecycleOwner(), bolsaDetalleAdapter::setLista);
                 } else {
                     rvIntercambiable.animate().alpha(0f).setDuration(300).withEndAction(() -> {
                         rvIntercambiable.setVisibility(View.GONE);
@@ -229,7 +226,6 @@ public class FragmentArenaDueloInd extends Fragment {
             });
         }
 
-        // --- LÓGICA DEL PANEL DE LIQUIDACIÓN (Botones) ---
         view.findViewById(R.id.btnVolverDeLiq).setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
             togglePanelLiquidacion(null, false);
@@ -238,12 +234,12 @@ public class FragmentArenaDueloInd extends Fragment {
         view.findViewById(R.id.btnConfirmarSalidaLiq).setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
             if (clienteEnLiquidacion != null) {
-                productoViewModel.retirarJugadorEspecificoInd(idMesaActual, clienteEnLiquidacion.idCliente);
+                arenaViewModel.retirarJugadorEspecificoInd(idMesaActual, clienteEnLiquidacion.idCliente);
                 startTimesMap.remove(clienteEnLiquidacion.idCliente);
                 togglePanelLiquidacion(null, false);
 
                 new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    participantes = productoViewModel.getIntegrantesAzulCacheados();
+                    participantes = arenaViewModel.getIntegrantesAzulCacheados();
                     setupMiniMarcadores(getView());
                 }, 350);
 
@@ -252,11 +248,9 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        // --- LÓGICA DEL BOTÓN LOG (HISTORIAL AGRUPADO ARENA) ---
         view.findViewById(R.id.btnVerLog).setOnClickListener(v -> {
             v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
 
-            // Evitamos que falle si participantes aún es null al tocar el botón muy rápido
             if (participantes == null) return;
 
             Map<Integer, Integer> mapaColoresInd = new HashMap<>();
@@ -272,7 +266,7 @@ public class FragmentArenaDueloInd extends Fragment {
                     rvIntercambiable.setVisibility(View.VISIBLE);
                     rvIntercambiable.setAlpha(0f);
                     rvIntercambiable.setAdapter(logDeudaAdapter);
-                    productoViewModel.obtenerLogAgrupado(idMesaActual).observe(getViewLifecycleOwner(), listaAgrupada -> {
+                    arenaViewModel.obtenerLogAgrupado(idMesaActual).observe(getViewLifecycleOwner(), listaAgrupada -> {
                         if (listaAgrupada != null) logDeudaAdapter.setListaAgrupada(listaAgrupada);
                     });
                     rvIntercambiable.animate().alpha(1f).setDuration(300).start();
@@ -290,7 +284,6 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        // --- SECCIÓN CONFIGURACIÓN Y REGLAS ---
         MaterialButton btnNivAficionado = view.findViewById(R.id.btnNivelAficionado);
         MaterialButton btnNivIntermedio = view.findViewById(R.id.btnNivelIntermedio);
         MaterialButton btnNivAvanzado = view.findViewById(R.id.btnNivelAvanzado);
@@ -307,15 +300,14 @@ public class FragmentArenaDueloInd extends Fragment {
         MaterialButton btnReglaUltimo = view.findViewById(R.id.btnReglaUltimo);
         List<MaterialButton> listaBotonesReglas = Arrays.asList(btnReglaPerdedores, btnReglaTodos, btnReglaUltimo);
 
-        btnReglaPerdedores.setOnClickListener(v -> { productoViewModel.setReglaPagoInd("PERDEDORES"); resaltarBoton(btnReglaPerdedores, listaBotonesReglas, "#FFFFFF"); });
-        btnReglaTodos.setOnClickListener(v -> { productoViewModel.setReglaPagoInd("TODOS"); resaltarBoton(btnReglaTodos, listaBotonesReglas, "#FFFFFF"); });
-        btnReglaUltimo.setOnClickListener(v -> { productoViewModel.setReglaPagoInd("ULTIMO"); resaltarBoton(btnReglaUltimo, listaBotonesReglas, "#FFFFFF"); });
+        btnReglaPerdedores.setOnClickListener(v -> { arenaViewModel.setReglaPagoInd("PERDEDORES"); resaltarBoton(btnReglaPerdedores, listaBotonesReglas, "#FFFFFF"); });
+        btnReglaTodos.setOnClickListener(v -> { arenaViewModel.setReglaPagoInd("TODOS"); resaltarBoton(btnReglaTodos, listaBotonesReglas, "#FFFFFF"); });
+        btnReglaUltimo.setOnClickListener(v -> { arenaViewModel.setReglaPagoInd("ULTIMO"); resaltarBoton(btnReglaUltimo, listaBotonesReglas, "#FFFFFF"); });
 
         com.google.android.material.switchmaterial.SwitchMaterial swPin = view.findViewById(R.id.switchRequierePin);
-        swPin.setOnClickListener(v -> productoViewModel.actualizarSeguridadPinDuelo(swPin.isChecked()));
+        swPin.setOnClickListener(v -> arenaViewModel.actualizarSeguridadPinDuelo(swPin.isChecked()));
 
-        // --- OBSERVADORES ---
-        productoViewModel.getPerfilDueloInd(idMesaActual).observe(getViewLifecycleOwner(), perfil -> {
+        arenaViewModel.getPerfilDueloInd(idMesaActual).observe(getViewLifecycleOwner(), perfil -> {
             if (perfil != null) {
                 this.metaPuntosActual = perfil.metaPuntos;
                 if (perfil.metaPuntos == 20) resaltarBoton(btnNivAficionado, listaBotonesNivel, "#00E5FF");
@@ -325,7 +317,7 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        productoViewModel.getReglaPagoInd().observe(getViewLifecycleOwner(), regla -> {
+        arenaViewModel.getReglaPagoInd().observe(getViewLifecycleOwner(), regla -> {
             if (regla != null) {
                 if ("PERDEDORES".equals(regla)) resaltarBoton(btnReglaPerdedores, listaBotonesReglas, "#FFFFFF");
                 else if ("TODOS".equals(regla)) resaltarBoton(btnReglaTodos, listaBotonesReglas, "#FFFFFF");
@@ -333,9 +325,8 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        productoViewModel.getRequierePinDuelo().observe(getViewLifecycleOwner(), swPin::setChecked);
+        arenaViewModel.getRequierePinDuelo().observe(getViewLifecycleOwner(), swPin::setChecked);
 
-        // --- BOTONES DE NAVEGACIÓN ---
         view.findViewById(R.id.btnVerPendientes).setOnClickListener(v -> togglePanelDespacho(true));
         view.findViewById(R.id.btnCerrarDespacho).setOnClickListener(v -> togglePanelDespacho(false));
         view.findViewById(R.id.fabSeleccionarMunicion).setOnClickListener(v -> abrirCatalogo());
@@ -347,15 +338,13 @@ public class FragmentArenaDueloInd extends Fragment {
         btnConfirmarRecluta.setOnClickListener(v -> ejecutarCargaPro());
         view.findViewById(R.id.btnCancelarRecluta).setOnClickListener(v -> togglePanelRecluta(false));
 
-        // IMPORTANTE: Eliminamos setupMiniMarcadores(view) e iniciarDuelo de aquí abajo
         setupObservadores();
         startGlobalTimer();
     }
 
     private void abrirPanelReclutamientoPro() {
-        // 🔥 CAMBIO MULTIMESA: Ahora pedimos solo los clientes registrados en ESTA mesa
         clienteViewModel.getClientesPorMesa(idMesaActual).observe(getViewLifecycleOwner(), todos -> {
-            List<Integer> idsOcupados = productoViewModel.obtenerIdsParticipantesArena();
+            List<Integer> idsOcupados = arenaViewModel.obtenerIdsParticipantesArena();
             List<com.nodo.tpv.data.dto.ClienteConSaldo> filtrados = new ArrayList<>();
 
             if (todos != null) {
@@ -366,16 +355,14 @@ public class FragmentArenaDueloInd extends Fragment {
 
             int colorDisponible = COLORES_NEON[participantes.size() % COLORES_NEON.length];
 
-            // 🔥 Creamos el adaptador
             ClienteAdapter reclutaAdapter = new ClienteAdapter() {
-                private int idSeleccionado = -1; // Local para el brillo
+                private int idSeleccionado = -1;
 
                 @Override
                 public void onBindViewHolder(@NonNull ClienteViewHolder holder, int position) {
                     super.onBindViewHolder(holder, position);
                     Cliente cliente = filtrados.get(position).cliente;
 
-                    // Diseño Ghost
                     holder.itemView.setBackgroundColor(Color.TRANSPARENT);
                     if (holder.itemView instanceof MaterialCardView) {
                         MaterialCardView card = (MaterialCardView) holder.itemView;
@@ -395,7 +382,6 @@ public class FragmentArenaDueloInd extends Fragment {
                     View bgIcono = holder.itemView.findViewById(R.id.bgIcono);
                     ImageView ivIcono = holder.itemView.findViewById(R.id.ivRolIcon);
 
-                    // 🔥 Lógica de resaltado corregida
                     if (cliente.idCliente == idSeleccionado) {
                         bgIcono.setBackgroundTintList(ColorStateList.valueOf(colorDisponible));
                         if (ivIcono != null) ivIcono.setColorFilter(Color.WHITE);
@@ -410,20 +396,18 @@ public class FragmentArenaDueloInd extends Fragment {
                         holder.tvAlias.setScaleY(1.0f);
                     }
 
-                    // 🔥 ASIGNACIÓN DIRECTA DEL CLICK
                     holder.itemView.setOnClickListener(v -> {
                         idSeleccionado = cliente.idCliente;
                         clienteSeleccionadoPro = cliente;
 
                         v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
 
-                        // Configurar el botón de confirmar
                         btnConfirmarRecluta.setEnabled(true);
                         btnConfirmarRecluta.setText("RECLUTAR A " + cliente.alias.toUpperCase());
                         btnConfirmarRecluta.setStrokeColor(ColorStateList.valueOf(colorDisponible));
                         btnConfirmarRecluta.setTextColor(colorDisponible);
 
-                        notifyDataSetChanged(); // Refresca para aplicar el color neón
+                        notifyDataSetChanged();
                     });
                 }
             };
@@ -454,15 +438,9 @@ public class FragmentArenaDueloInd extends Fragment {
 
     private void ejecutarCargaPro() {
         if (clienteSeleccionadoPro != null) {
-            // Ejecutar la adición en el ViewModel
-            productoViewModel.agregarJugadorADueloIndActivo(idMesaActual, clienteSeleccionadoPro);
-
+            arenaViewModel.agregarJugadorADueloIndActivo(idMesaActual, clienteSeleccionadoPro);
             Toast.makeText(getContext(), clienteSeleccionadoPro.alias.toUpperCase() + " sumado a la mesa", Toast.LENGTH_SHORT).show();
-
-            // Cerrar el panel
             togglePanelRecluta(false);
-
-            // Limpiar el objeto para la siguiente vez
             clienteSeleccionadoPro = null;
         } else {
             Toast.makeText(getContext(), "Seleccione un cliente primero", Toast.LENGTH_SHORT).show();
@@ -484,7 +462,7 @@ public class FragmentArenaDueloInd extends Fragment {
 
     private void guardarPerfilDuelo(int puntos, String nivel) {
         this.metaPuntosActual = puntos;
-        productoViewModel.actualizarPerfilDueloInd(idMesaActual, puntos, nivel);
+        arenaViewModel.actualizarPerfilDueloInd(idMesaActual, puntos, nivel);
         tvHeaderBillar.setText("MESA #" + idMesaActual + " | META: " + puntos);
         actualizarMetasEnCards();
         toggleConfigPanel(false);
@@ -494,7 +472,6 @@ public class FragmentArenaDueloInd extends Fragment {
         LinearLayout container = root.findViewById(R.id.containerJugadores);
         if (container == null) return;
 
-        // 1. Limpiamos el contenedor
         container.removeAllViews();
 
         for (int i = 0; i < participantes.size(); i++) {
@@ -502,14 +479,12 @@ public class FragmentArenaDueloInd extends Fragment {
             int color = COLORES_NEON[i % COLORES_NEON.length];
             final int indexFinal = i;
 
-            // Inicializar estados si el jugador es nuevo
             if (!tiempoAcumuladoPorJugador.containsKey(cliente.idCliente)) {
                 tiempoAcumuladoPorJugador.put(cliente.idCliente, 0L);
                 estadoPausaPorJugador.put(cliente.idCliente, false);
                 miniMarcadoresPorJugador.put(cliente.idCliente, 0);
             }
 
-            // 2. Inflar Card
             View cardView = getLayoutInflater().inflate(R.layout.item_marcador_individual, container, false);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f);
             params.setMargins(10, 10, 10, 10);
@@ -518,23 +493,20 @@ public class FragmentArenaDueloInd extends Fragment {
             MaterialCardView mCard = (MaterialCardView) cardView;
             mCard.setStrokeColor(ColorStateList.valueOf(color));
 
-            // Vinculamos Vistas
             TextView tvNombre = cardView.findViewById(R.id.tvNombreInd);
             TextView tvScore = cardView.findViewById(R.id.tvScoreInd);
             TextView tvMiniCounter = cardView.findViewById(R.id.tvMiniCounterInd);
             TextView tvMetaMini = cardView.findViewById(R.id.tvMetaMiniInd);
-            TextView tvDeuda = cardView.findViewById(R.id.tvDeudaIndividual); // Burbuja de deuda
-            TextView tvTiempo = cardView.findViewById(R.id.tvTiempoInd); // Reloj
+            TextView tvDeuda = cardView.findViewById(R.id.tvDeudaIndividual);
+            TextView tvTiempo = cardView.findViewById(R.id.tvTiempoInd);
             ImageButton btnAdd = cardView.findViewById(R.id.btnSumarPunto);
             ImageButton btnSub = cardView.findViewById(R.id.btnRestarPunto);
             ImageButton btnPausa = cardView.findViewById(R.id.btnPausaReanudarInd);
             ImageButton btnQuitarJugadorInd = cardView.findViewById(R.id.btnQuitarJugadorInd);
 
-
-            // Configuración inicial de textos y colores
             tvNombre.setText(cliente.alias.toUpperCase());
             tvNombre.setTextColor(color);
-            tvScore.setTag(cliente.idCliente); // Tag para el re-hidratador global
+            tvScore.setTag(cliente.idCliente);
             btnAdd.setImageTintList(ColorStateList.valueOf(color));
             btnSub.setImageTintList(ColorStateList.valueOf(color));
 
@@ -545,14 +517,12 @@ public class FragmentArenaDueloInd extends Fragment {
             tvMiniFinal.setText(String.valueOf(miniMarcadoresPorJugador.get(idClienteFinal)));
             if (tvMetaMini != null) tvMetaMini.setText(String.valueOf(metaPuntosActual));
 
-            // --- 🔥 OBSERVADOR DE DEUDA EN TIEMPO REAL ---
-            // Esto soluciona que el valor de la deuda aparezca y se refresque
-            productoViewModel.obtenerSaldoIndividualDuelo(idClienteFinal).observe(getViewLifecycleOwner(), saldo -> {
+            arenaViewModel.obtenerSaldoIndividualDuelo(idClienteFinal).observe(getViewLifecycleOwner(), saldo -> {
                 if (tvDeuda != null) {
                     NumberFormat format = NumberFormat.getCurrencyInstance(new Locale("es", "CO"));
                     format.setMaximumFractionDigits(0);
                     tvDeuda.setText("DEUDA: " + format.format(saldo != null ? saldo : BigDecimal.ZERO));
-                    tvDeuda.setTextColor(color); // Mantener el estilo neón
+                    tvDeuda.setTextColor(color);
                 }
             });
 
@@ -561,7 +531,6 @@ public class FragmentArenaDueloInd extends Fragment {
                 togglePanelLiquidacion(cliente, true);
             });
 
-            // 3. Listener Pausa
             if (btnPausa != null) {
                 btnPausa.setOnClickListener(v -> {
                     boolean estaPausado = estadoPausaPorJugador.getOrDefault(idClienteFinal, false);
@@ -571,7 +540,6 @@ public class FragmentArenaDueloInd extends Fragment {
                 });
             }
 
-            // 4. Listener Sumar (Con reseteo masivo y snapshot)
             btnAdd.setOnClickListener(v -> {
                 int actual = miniMarcadoresPorJugador.get(idClienteFinal);
                 if (actual >= metaPuntosActual) return;
@@ -584,8 +552,8 @@ public class FragmentArenaDueloInd extends Fragment {
                 if (actual >= metaPuntosActual) {
                     com.google.android.material.switchmaterial.SwitchMaterial swPin = root.findViewById(R.id.switchRequierePin);
                     boolean requierePin = (swPin != null) ? swPin.isChecked() :
-                            (productoViewModel.getRequierePinDuelo().getValue() != null &&
-                                    productoViewModel.getRequierePinDuelo().getValue());
+                            (arenaViewModel.getRequierePinDuelo().getValue() != null &&
+                                    arenaViewModel.getRequierePinDuelo().getValue());
 
                     if (requierePin) {
                         confirmarImpactoOficial(indexFinal, tvMiniFinal);
@@ -593,18 +561,13 @@ public class FragmentArenaDueloInd extends Fragment {
                         dispararCelebracion();
                         aplicarEfectoImpacto(cardFinal, color);
 
-                        // A. Foto antes de borrar
                         Map<Integer, Integer> snapshotActual = new HashMap<>(miniMarcadoresPorJugador);
+                        arenaViewModel.aplicarDanioInd(idClienteFinal, participantes, snapshotActual);
 
-                        // B. Registro en ViewModel (Dispara deuda y Log)
-                        productoViewModel.aplicarDanioInd(idClienteFinal, participantes, snapshotActual);
-
-                        // C. Reseteo Lógico
                         for (Cliente c : participantes) {
                             miniMarcadoresPorJugador.put(c.idCliente, 0);
                         }
 
-                        // D. Reseteo Visual tras un momento de gloria
                         new Handler(Looper.getMainLooper()).postDelayed(() -> {
                             for (int j = 0; j < container.getChildCount(); j++) {
                                 View child = container.getChildAt(j);
@@ -618,7 +581,6 @@ public class FragmentArenaDueloInd extends Fragment {
                 }
             });
 
-            // 5. Listener Restar
             btnSub.setOnClickListener(v -> {
                 int val = miniMarcadoresPorJugador.get(idClienteFinal);
                 if (val > 0) {
@@ -631,8 +593,7 @@ public class FragmentArenaDueloInd extends Fragment {
             container.addView(cardView);
         }
 
-        // 6. REHIDRATACIÓN DE SCORES GLOBALES (Marcador grande)
-        Map<Integer, Integer> scoresActuales = productoViewModel.getScoresIndividualesInd().getValue();
+        Map<Integer, Integer> scoresActuales = arenaViewModel.getScoresIndividualesInd().getValue();
         if (scoresActuales != null) {
             for (int j = 0; j < container.getChildCount(); j++) {
                 View card = container.getChildAt(j);
@@ -665,18 +626,13 @@ public class FragmentArenaDueloInd extends Fragment {
                     if (PIN_MAESTRO.equals(pinIngresado)) {
                         dispararCelebracion();
 
-                        // 1. Snapshot antes de limpiar
                         Map<Integer, Integer> snapshotActual = new HashMap<>(miniMarcadoresPorJugador);
+                        arenaViewModel.aplicarDanioInd(idClienteDuelo, participantes, snapshotActual);
 
-                        // 2. ViewModel registra daño e hito
-                        productoViewModel.aplicarDanioInd(idClienteDuelo, participantes, snapshotActual);
-
-                        // 3. 🔥 RESETEO MASIVO: Todos vuelven a cero
                         for (Cliente c : participantes) {
                             miniMarcadoresPorJugador.put(c.idCliente, 0);
                         }
 
-                        // 4. Refrescar UI (Tarjetas a cero)
                         new Handler(Looper.getMainLooper()).postDelayed(() -> {
                             setupMiniMarcadores(getView());
                         }, 1000);
@@ -693,21 +649,20 @@ public class FragmentArenaDueloInd extends Fragment {
     }
 
     private void setupObservadores() {
-        // Dentro de setupObservadores() en FragmentArenaDueloInd.java
-        productoViewModel.obtenerScoresDesdePersistencia(idMesaActual).observe(getViewLifecycleOwner(), listaDuelos -> {
-            if (listaDuelos != null) {
-                Map<Integer, Integer> mapScores = new HashMap<>();
-                for (DueloTemporalInd d : listaDuelos) {
-                    // d.score es el valor persistido en la DB
-                    mapScores.put(d.idCliente, d.score);
-                }
 
-                // Sincronizamos el LiveData del ViewModel para que las CardViews se refresquen
-                productoViewModel.setScoresIndividualesManual(mapScores);
-            }
-        });
-        // 1. BOLSA CONFIRMADA (Productos ENTREGADOS con idCliente = 0)
-        productoViewModel.getBolsaIndEntregada().observe(getViewLifecycleOwner(), productos -> {
+        // Carga directa de DB para evitar error de métodos faltantes en ArenaViewModel
+        AppDatabase.getInstance(requireContext()).dueloTemporalIndDao().obtenerScoresDesdePersistencia(idMesaActual)
+                .observe(getViewLifecycleOwner(), listaDuelos -> {
+                    if (listaDuelos != null) {
+                        Map<Integer, Integer> mapScores = new HashMap<>();
+                        for (DueloTemporalInd d : listaDuelos) {
+                            mapScores.put(d.idCliente, d.score);
+                        }
+                        arenaViewModel.setScoresIndividualesManual(mapScores);
+                    }
+                });
+
+        arenaViewModel.getBolsaIndEntregada().observe(getViewLifecycleOwner(), productos -> {
             if (productos != null) {
                 actualizarUIBolsa(productos);
                 if (bolsaDetalleAdapter != null) {
@@ -716,8 +671,7 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        // 2. BADGE DE NOTIFICACIÓN (Pedidos PENDIENTES)
-        productoViewModel.observarConteoPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), conteo -> {
+        pedidoViewModel.observarConteoPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), conteo -> {
             TextView tvBadge = getView().findViewById(R.id.tvBadgePendientes);
             if (conteo != null && conteo > 0) {
                 if (tvBadge != null) {
@@ -732,9 +686,8 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        // Busca este bloque dentro de setupObservadores
-        productoViewModel.getDbTrigger().observe(getViewLifecycleOwner(), trigger -> {
-            participantes = productoViewModel.getIntegrantesAzulCacheados();
+        arenaViewModel.getDbTrigger().observe(getViewLifecycleOwner(), trigger -> {
+            participantes = arenaViewModel.getIntegrantesAzulCacheados();
             setupMiniMarcadores(getView());
 
             LinearLayout container = getView() != null ? getView().findViewById(R.id.containerJugadores) : null;
@@ -744,22 +697,17 @@ public class FragmentArenaDueloInd extends Fragment {
                 final int idCliente = participantes.get(i).idCliente;
                 final int index = i;
 
-                // --- CORRECCIÓN CRONÓMETRO ---
-                // Traemos el tiempo de inicio de la DB y lo ponemos en el mapa que usa el Runnable
                 new Thread(() -> {
-                    long startTime = productoViewModel.obtenerTimestampInicioPorCliente(idMesaActual, idCliente);
+                    long startTime = AppDatabase.getInstance(requireContext()).dueloTemporalIndDao().obtenerTimestampInicioPorCliente(idMesaActual, idCliente);
                     if (startTime > 0) {
                         startTimesMap.put(idCliente, startTime);
                     }
                 }).start();
 
-                // --- CORRECCIÓN REFRESCO DEUDA ---
-                // Buscamos la tarjeta ya dibujada para actualizar solo su texto de deuda
                 View card = container.getChildAt(index);
                 if (card != null) {
                     TextView tvDeuda = card.findViewById(R.id.tvDeudaIndividual);
-                    // Observamos el saldo y actualizamos directamente el TextView
-                    productoViewModel.obtenerSaldoIndividualDuelo(idCliente).observe(getViewLifecycleOwner(), saldo -> {
+                    arenaViewModel.obtenerSaldoIndividualDuelo(idCliente).observe(getViewLifecycleOwner(), saldo -> {
                         if (tvDeuda != null) {
                             NumberFormat format = NumberFormat.getCurrencyInstance(new Locale("es", "CO"));
                             format.setMaximumFractionDigits(0);
@@ -770,8 +718,7 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        // 4. CONFIGURACIÓN DEL DUELO (Meta de puntos)
-        productoViewModel.getPerfilDueloInd(idMesaActual).observe(getViewLifecycleOwner(), perfil -> {
+        arenaViewModel.getPerfilDueloInd(idMesaActual).observe(getViewLifecycleOwner(), perfil -> {
             if (perfil != null) {
                 this.metaPuntosActual = perfil.metaPuntos;
                 if (tvHeaderBillar != null) {
@@ -781,15 +728,12 @@ public class FragmentArenaDueloInd extends Fragment {
             }
         });
 
-        // Dentro de setupObservadores() en FragmentArenaDueloInd.java
-
-        productoViewModel.getScoresIndividualesInd().observe(getViewLifecycleOwner(), scoresMap -> {
+        arenaViewModel.getScoresIndividualesInd().observe(getViewLifecycleOwner(), scoresMap -> {
             if (scoresMap == null) return;
 
             LinearLayout container = getView().findViewById(R.id.containerJugadores);
             if (container == null) return;
 
-            // Recorremos las tarjetas que ya existen en el contenedor
             for (int i = 0; i < container.getChildCount(); i++) {
                 View card = container.getChildAt(i);
                 TextView tvScore = card.findViewById(R.id.tvScoreInd);
@@ -797,7 +741,6 @@ public class FragmentArenaDueloInd extends Fragment {
                 if (tvScore != null && tvScore.getTag() != null) {
                     int clienteId = (int) tvScore.getTag();
                     if (scoresMap.containsKey(clienteId)) {
-                        // Actualizamos el número grande (Global)
                         tvScore.setText(String.valueOf(scoresMap.get(clienteId)));
                     }
                 }
@@ -827,8 +770,6 @@ public class FragmentArenaDueloInd extends Fragment {
         }
     }
 
-    // En FragmentArenaDueloInd.java
-
     private void actualizarUIBolsa(List<Producto> productos) {
         if (productos == null || productos.isEmpty()) {
             tvItemsBolsa.setText("Cargue munición...");
@@ -838,9 +779,9 @@ public class FragmentArenaDueloInd extends Fragment {
             BigDecimal total = BigDecimal.ZERO;
 
             for (Producto p : productos) {
-                // Concatenamos cada producto en una nueva línea para tvItemsBolsa
-                sb.append("• ").append(p.getNombreProducto().toUpperCase()).append("\n");
-                total = total.add(p.getPrecioProducto());
+                // CORRECCIÓN: Acceso directo a variables de Producto
+                sb.append("• ").append(p.nombreProducto.toUpperCase()).append("\n");
+                total = total.add(p.precioProducto);
             }
 
             tvItemsBolsa.setText(sb.toString().trim());
@@ -855,8 +796,6 @@ public class FragmentArenaDueloInd extends Fragment {
         timerHandler.post(timerRunnable);
     }
 
-    // En FragmentArenaDueloInd.java
-
     private Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
@@ -868,7 +807,6 @@ public class FragmentArenaDueloInd extends Fragment {
                 for (int i = 0; i < container.getChildCount(); i++) {
                     View card = container.getChildAt(i);
                     TextView tvTimer = card.findViewById(R.id.tvTiempoInd);
-                    // Usamos el tag que pusimos en setupMiniMarcadores
                     TextView tvScore = card.findViewById(R.id.tvScoreInd);
 
                     if (tvScore != null && tvScore.getTag() != null) {
@@ -888,7 +826,7 @@ public class FragmentArenaDueloInd extends Fragment {
                     }
                 }
             }
-            timerHandler.postDelayed(this, 1000); // Re-ejecutar cada segundo
+            timerHandler.postDelayed(this, 1000);
         }
     };
 
@@ -898,7 +836,7 @@ public class FragmentArenaDueloInd extends Fragment {
                 .setTitle("REGLA DE REPARTO")
                 .setItems(opciones, (dialog, which) -> {
                     String regla = which == 0 ? "PERDEDORES" : which == 1 ? "TODOS" : "ULTIMO";
-                    productoViewModel.setReglaPagoInd(regla);
+                    arenaViewModel.setReglaPagoInd(regla);
                 }).show();
     }
 
@@ -924,8 +862,7 @@ public class FragmentArenaDueloInd extends Fragment {
         new MaterialAlertDialogBuilder(requireContext(), R.style.MaterialAlertDialog_Garena)
                 .setTitle("FINALIZAR DUELO")
                 .setPositiveButton("SÍ", (d, w) -> {
-                    // Pasamos el ID de la mesa y el tag de 3 Bandas
-                    productoViewModel.finalizarDueloCompleto(idMesaActual, "3BANDAS");
+                    arenaViewModel.finalizarDueloCompleto(idMesaActual, "3BANDAS");
                     getParentFragmentManager().popBackStack();
                 }).show();
     }
@@ -951,14 +888,13 @@ public class FragmentArenaDueloInd extends Fragment {
 
         if (mostrar) {
             panel.setVisibility(View.VISIBLE);
-            panel.setTranslationX(screenWidth); // Asegurar que inicie en la derecha
+            panel.setTranslationX(screenWidth);
             panel.animate()
                     .translationX(0)
                     .setDuration(400)
                     .setInterpolator(new DecelerateInterpolator())
                     .start();
 
-            // Cargar los datos al abrir
             cargarPendientesParaDespacho();
         } else {
             panel.animate()
@@ -973,9 +909,8 @@ public class FragmentArenaDueloInd extends Fragment {
         RecyclerView rv = getView().findViewById(R.id.rvDespachoBolsa);
         rv.setLayoutManager(new LinearLayoutManager(getContext()));
 
-        productoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
+        pedidoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
             if (lista == null || lista.isEmpty()) {
-                // Si ya no hay nada, mostramos un mensaje o cerramos
                 togglePanelDespacho(false);
                 return;
             }
@@ -996,18 +931,14 @@ public class FragmentArenaDueloInd extends Fragment {
                     holder.btnConfirmar.setOnClickListener(v -> {
                         v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
 
-                        // 1. Obtener la sesión actual para saber quién entrega
                         com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(holder.itemView.getContext());
                         com.nodo.tpv.data.entities.Usuario user = session.obtenerUsuario();
 
-                        // Datos reales (seguridad contra nulos)
                         final int idOp = (user != null) ? user.idUsuario : 0;
                         final String loginOp = (user != null) ? user.login : "anonimo";
 
-                        // 2. Animación de salida
                         holder.itemView.animate().alpha(0f).translationX(100f).setDuration(300).withEndAction(() -> {
-                            // 3. Llamada corregida con (int idDetalle, int idUsuario, String loginOperativo)
-                            productoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
+                            pedidoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
                         }).start();
                     });
                 }
@@ -1020,7 +951,6 @@ public class FragmentArenaDueloInd extends Fragment {
         });
     }
 
-    // Clase interna para el ViewHolder del Despacho
     static class DespachoViewHolder extends RecyclerView.ViewHolder {
         TextView tvNombre;
         MaterialButton btnConfirmar;
@@ -1037,13 +967,11 @@ public class FragmentArenaDueloInd extends Fragment {
 
         for (MaterialButton btn : grupo) {
             if (btn == seleccionado) {
-                // Estilo Activo: Fondo sólido con color neón y texto negro
                 btn.setBackgroundTintList(ColorStateList.valueOf(colorActivo));
                 btn.setTextColor(Color.BLACK);
                 btn.setIconTint(ColorStateList.valueOf(Color.BLACK));
-                btn.setStrokeWidth(0); // Quitar borde en activo
+                btn.setStrokeWidth(0);
             } else {
-                // Estilo Inactivo: Transparente con borde blanco sutil
                 btn.setBackgroundTintList(ColorStateList.valueOf(Color.TRANSPARENT));
                 btn.setTextColor(Color.WHITE);
                 btn.setIconTint(ColorStateList.valueOf(Color.WHITE));
@@ -1053,10 +981,7 @@ public class FragmentArenaDueloInd extends Fragment {
         }
     }
 
-    // Dentro de FragmentArenaDueloInd.java
-
     private void togglePanelLiquidacion(Cliente cliente, boolean mostrar) {
-        // Vistas a ocultar/mostrar
         View topBar = getView().findViewById(R.id.layoutTopBar);
         LinearLayout containerJugadores = getView().findViewById(R.id.containerJugadores);
         View bottomActions = getView().findViewById(R.id.layoutAccionesInferiores);
@@ -1064,36 +989,30 @@ public class FragmentArenaDueloInd extends Fragment {
         if (mostrar) {
             this.clienteEnLiquidacion = cliente;
 
-            // A. Identificar color del jugador para el diseño
             int index = participantes.indexOf(cliente);
             int colorJugador = COLORES_NEON[index % COLORES_NEON.length];
 
-            // B. Setear textos básicos
             ((TextView)panelLiquidacion.findViewById(R.id.tvNombreJugadorLiq)).setText(cliente.alias.toUpperCase());
             ((TextView)panelLiquidacion.findViewById(R.id.tvNombreJugadorLiq)).setTextColor(colorJugador);
 
-            // C. Obtener tiempo actual del cronómetro visual
             TextView tvRelojCard = containerJugadores.getChildAt(index).findViewById(R.id.tvTiempoInd);
             if (tvRelojCard != null) {
                 ((TextView)panelLiquidacion.findViewById(R.id.tvTiempoTotalLiq)).setText(tvRelojCard.getText());
             }
 
-            // D. Cargar Saldo y Log Agrupado
-            productoViewModel.obtenerSaldoIndividualDuelo(cliente.idCliente).observe(getViewLifecycleOwner(), saldo -> {
+            arenaViewModel.obtenerSaldoIndividualDuelo(cliente.idCliente).observe(getViewLifecycleOwner(), saldo -> {
                 NumberFormat format = NumberFormat.getCurrencyInstance(new Locale("es", "CO"));
                 format.setMaximumFractionDigits(0);
                 ((TextView)panelLiquidacion.findViewById(R.id.tvTotalPagarLiq)).setText(format.format(saldo));
             });
 
-            // E. Configurar Adaptador y observar datos
             liquidacionAdapter.configurarProtagonista(cliente.idCliente, colorJugador);
-            productoViewModel.obtenerLogAgrupado(idMesaActual).observe(getViewLifecycleOwner(), grupos -> {
+            arenaViewModel.obtenerLogAgrupado(idMesaActual).observe(getViewLifecycleOwner(), grupos -> {
                 if (grupos != null) {
                     liquidacionAdapter.setListaAgrupada(grupos);
                 }
             });
 
-            // F. Animaciones de transición (Ocultar fondo / Mostrar panel)
             containerJugadores.animate().alpha(0f).scaleX(0.9f).scaleY(0.9f).setDuration(300).start();
             topBar.animate().alpha(0f).setDuration(300).start();
             bottomActions.animate().alpha(0f).translationY(100).setDuration(300).start();
@@ -1109,7 +1028,6 @@ public class FragmentArenaDueloInd extends Fragment {
                     .start();
 
         } else {
-            // Regresar a la normalidad
             panelLiquidacion.animate()
                     .alpha(0f)
                     .translationY(getResources().getDisplayMetrics().heightPixels * 0.1f)
@@ -1122,5 +1040,4 @@ public class FragmentArenaDueloInd extends Fragment {
             bottomActions.animate().alpha(1f).translationY(0).setDuration(400).start();
         }
     }
-
 }
