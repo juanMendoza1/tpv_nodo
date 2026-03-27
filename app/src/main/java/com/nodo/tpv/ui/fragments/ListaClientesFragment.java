@@ -12,6 +12,7 @@ import android.view.animation.RotateAnimation;
 import android.view.animation.TranslateAnimation;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -53,6 +54,11 @@ public class ListaClientesFragment extends Fragment {
     private int idMesaActual;
     private String tipoJuegoMesa;
     private boolean esAdicionInd = false; // Flag para reclutamiento individual
+
+    private ImageButton btnMainAction;
+    private com.google.android.material.button.MaterialButton btnRegistrar, btnPagarTodo, btnHistorial, btnModoDuelo;
+
+
 
     private final int[] COLORES_BILLAR = {
             Color.parseColor("#00E5FF"), // Azul neón
@@ -153,7 +159,9 @@ public class ListaClientesFragment extends Fragment {
         btnMinimizarPago.setOnClickListener(v -> toggleResumenVisual((ViewGroup) view));
         view.findViewById(R.id.btnCerrarResumen).setOnClickListener(v -> {
             cardResumenPago.setVisibility(View.GONE);
-            fabMain.show();
+            if (btnMainAction != null) {
+                btnMainAction.setVisibility(View.VISIBLE);
+            }
         });
 
         arenaViewModel.getEnModoDuelo().observe(getViewLifecycleOwner(), activo -> {
@@ -184,7 +192,7 @@ public class ListaClientesFragment extends Fragment {
                 // MODO NORMAL: LIMPIO Y BLANCO
                 bgDuelo.setVisibility(View.GONE);
                 marcadorCentral.setVisibility(View.GONE);
-                tvMesa.setTextColor(Color.parseColor("#1A1A1B"));
+                tvMesa.setTextColor(Color.WHITE); // <--- AHORA SIEMPRE SERÁ BLANCO
                 tvTipo.setTextColor(Color.parseColor("#BDBDBD"));
                 indicadorEstado.setBackgroundColor(Color.parseColor("#1B5E20")); // Verde
             }
@@ -308,8 +316,16 @@ public class ListaClientesFragment extends Fragment {
     }
 
     private void activarInterfazCobroVisual(Cliente cliente, boolean permitirPago) {
-        if (isMenuOpen) toggleMenu();
-        fabMain.hide();
+        // 1. Cierra el menú de cristal si está abierto
+        if (isMenuOpen) {
+            toggleMenu();
+        }
+
+        // 2. Oculta el botón principal para que no estorbe el panel de cobro
+        if (btnMainAction != null) {
+            btnMainAction.setVisibility(View.GONE);
+        }
+
         tvNombreClientePago.setText(cliente.alias.toUpperCase());
         btnEjecutarPagoVisual.setVisibility(permitirPago ? View.VISIBLE : View.GONE);
         rvItemsCuenta.setLayoutManager(new LinearLayoutManager(getContext()));
@@ -323,17 +339,31 @@ public class ListaClientesFragment extends Fragment {
                 for (DetalleConNombre d : dt) total = total.add(d.getSubtotal());
                 tAdapter.setLista(dt);
                 tvMontoTotalResumen.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(total));
+
                 cardResumenPago.setVisibility(View.VISIBLE);
                 cardResumenPago.setTranslationY(600);
                 cardResumenPago.animate().translationY(0).setDuration(400).start();
+
                 final BigDecimal montoParaEnviar = total;
                 btnEjecutarPagoVisual.setOnClickListener(v -> {
-                    cardResumenPago.setVisibility(View.GONE); fabMain.show();
+                    cardResumenPago.setVisibility(View.GONE);
+
+                    // 3. Vuelve a mostrar el botón principal al ir a la cámara
+                    if (btnMainAction != null) {
+                        btnMainAction.setVisibility(View.VISIBLE);
+                    }
+
                     FragmentCamaraSeguridad fCam = FragmentCamaraSeguridad.newInstance(cliente.idCliente, cliente.alias, montoParaEnviar);
                     abrirFragmento(fCam);
                 });
             } else {
-                cardResumenPago.setVisibility(View.GONE); fabMain.show();
+                cardResumenPago.setVisibility(View.GONE);
+
+                // 4. Vuelve a mostrar el botón principal si no hay consumos
+                if (btnMainAction != null) {
+                    btnMainAction.setVisibility(View.VISIBLE);
+                }
+
                 Toast.makeText(getContext(), "Este cliente no tiene consumos registrados", Toast.LENGTH_SHORT).show();
             }
         });
@@ -347,37 +377,85 @@ public class ListaClientesFragment extends Fragment {
     }
 
     private void setupFloatingButtons(View view) {
-        fabMain = view.findViewById(R.id.fabMain);
-        fabRegistrar = view.findViewById(R.id.fabRegistrar);
-        fabPagarTodo = view.findViewById(R.id.fabPagarTodo);
-        fabHistorial = view.findViewById(R.id.fabHistorial);
-        fabModoDuelo = view.findViewById(R.id.fabModoDuelo);
-        fabMain.setOnClickListener(v -> toggleMenu());
-        fabRegistrar.setOnClickListener(v -> mostrarDialogoRegistro());
-        fabHistorial.setOnClickListener(v -> { toggleMenu(); abrirHistorial(); });
-        fabPagarTodo.setOnClickListener(v -> { toggleMenu(); confirmarPagoMasivo(); });
-        fabModoDuelo.setOnClickListener(v -> {
+        // 1. Enlazamos las nuevas vistas del Panel HUD (ImageButtons)
+        btnMainAction = view.findViewById(R.id.btnMainAction);
+        btnRegistrar  = view.findViewById(R.id.btnRegistrar);
+        btnPagarTodo  = view.findViewById(R.id.btnPagarTodo);
+        btnHistorial  = view.findViewById(R.id.btnHistorial);
+        btnModoDuelo  = view.findViewById(R.id.btnModoDuelo);
+
+        // 2. Evento del botón principal (Abre/Cierra el menú)
+        btnMainAction.setOnClickListener(v -> toggleMenu());
+
+        // 3. Eventos de los botones secundarios
+        btnRegistrar.setOnClickListener(v -> {
+            toggleMenu(); // Cierra el menú al hacer clic
+            mostrarDialogoRegistro();
+        });
+
+        btnHistorial.setOnClickListener(v -> {
             toggleMenu();
-            if (Boolean.TRUE.equals(arenaViewModel.getEnModoDuelo().getValue())) reanudarDueloPausado();
-            else if (!modoSeleccionVersus) iniciarSeleccionDuelo();
-            else cancelarSeleccionDuelo();
+            abrirHistorial();
+        });
+
+        btnPagarTodo.setOnClickListener(v -> {
+            toggleMenu();
+            confirmarPagoMasivo();
+        });
+
+        btnModoDuelo.setOnClickListener(v -> {
+            toggleMenu();
+            if (Boolean.TRUE.equals(arenaViewModel.getEnModoDuelo().getValue())) {
+                reanudarDueloPausado();
+            } else if (!modoSeleccionVersus) {
+                iniciarSeleccionDuelo();
+            } else {
+                cancelarSeleccionDuelo();
+            }
         });
     }
 
     public void mostrarDialogoRegistro() {
-        if (isMenuOpen) toggleMenu(); fabMain.hide();
+        // 1. Cerramos el menú con animación si está abierto
+        if (isMenuOpen) {
+            toggleMenu();
+        }
+
+        // 2. Ocultamos el botón principal (Usando View.GONE en lugar de .hide())
+        if (btnMainAction != null) {
+            btnMainAction.setVisibility(View.GONE);
+        }
+
+        // Preparamos la vista del diálogo
         View dv = getLayoutInflater().inflate(R.layout.dialog_registrar_cliente, null);
         TextInputEditText etA = dv.findViewById(R.id.etAlias);
         MaterialAutoCompleteTextView act = dv.findViewById(R.id.actTipoCliente);
+
         act.setAdapter(new ArrayAdapter<>(requireContext(), android.R.layout.simple_list_item_1, new String[]{"INDIVIDUAL", "GRUPO"}));
-        AlertDialog d = new MaterialAlertDialogBuilder(requireContext()).setView(dv).setOnDismissListener(dialog -> fabMain.show()).create();
+
+        // 3. Creamos el diálogo y le decimos que vuelva a mostrar el botón al cerrarse
+        AlertDialog d = new MaterialAlertDialogBuilder(requireContext())
+                .setView(dv)
+                .setOnDismissListener(dialog -> {
+                    // Volvemos a mostrar el botón principal (Usando View.VISIBLE en lugar de .show())
+                    if (btnMainAction != null) {
+                        btnMainAction.setVisibility(View.VISIBLE);
+                    }
+                })
+                .create();
+
+        // 4. Lógica del botón de guardar
         dv.findViewById(R.id.btnGuardar).setOnClickListener(v -> {
             String a = etA.getText().toString().trim();
             if (!a.isEmpty()) {
                 clienteViewModel.guardarCliente(a, act.getText().toString(), idMesaActual);
                 d.dismiss();
+            } else {
+                // Un pequeño extra: Mostrar error si el cajón de texto está vacío
+                etA.setError("El alias es obligatorio");
             }
         });
+
         d.show();
     }
 
@@ -391,8 +469,52 @@ public class ListaClientesFragment extends Fragment {
     }
 
     private void toggleMenu() {
-        if (!isMenuOpen) { fabMain.startAnimation(rotateOpen); setFabVisibility(View.VISIBLE, fromBottom); isMenuOpen = true; }
-        else { fabMain.startAnimation(rotateClose); setFabVisibility(View.GONE, toBottom); isMenuOpen = false; }
+        isMenuOpen = !isMenuOpen;
+
+        if (isMenuOpen) {
+            // Gira el botón principal (el símbolo '+' se convierte en una 'x')
+            btnMainAction.animate().rotation(45f).setDuration(200).start();
+            btnMainAction.setColorFilter(Color.parseColor("#FF1744")); // Opcional: se pone rojo al abrir
+
+            // Muestra los botones en cascada (con un pequeño retraso entre cada uno)
+            mostrarBotonAnimado(btnRegistrar, 50);
+            mostrarBotonAnimado(btnModoDuelo, 100);
+            mostrarBotonAnimado(btnPagarTodo, 150);
+            mostrarBotonAnimado(btnHistorial, 200);
+        } else {
+            // Regresa el botón principal a la normalidad
+            btnMainAction.animate().rotation(0f).setDuration(200).start();
+            btnMainAction.setColorFilter(Color.parseColor("#00E676")); // Vuelve a verde neón
+
+            // Oculta los botones en cascada invertida
+            ocultarBotonAnimado(btnHistorial, 0);
+            ocultarBotonAnimado(btnPagarTodo, 50);
+            ocultarBotonAnimado(btnModoDuelo, 100);
+            ocultarBotonAnimado(btnRegistrar, 150);
+        }
+    }
+
+    private void mostrarBotonAnimado(View btn, int delay) {
+        btn.setVisibility(View.VISIBLE);
+        btn.setAlpha(0f);
+        btn.setTranslationY(20f); // Comienza un poco más abajo
+        btn.animate()
+                .alpha(1f)
+                .translationY(0f) // Sube a su posición original
+                .setStartDelay(delay)
+                .setDuration(200)
+                .start();
+    }
+
+    // Función auxiliar para ocultar con animación "Fade Out"
+    private void ocultarBotonAnimado(View btn, int delay) {
+        btn.animate()
+                .alpha(0f)
+                .translationY(20f) // Baja ligeramente mientras desaparece
+                .setStartDelay(delay)
+                .setDuration(200)
+                .withEndAction(() -> btn.setVisibility(View.GONE)) // Al terminar, se quita de la pantalla
+                .start();
     }
 
     private void setFabVisibility(int v, Animation a) {
