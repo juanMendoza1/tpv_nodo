@@ -5,22 +5,31 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:gravity="center_horizontal"
-    android:background="#E6000000">
+    android:background="#ED12231A"> <RelativeLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingTop="20dp">
 
-    <RelativeLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content">
-        <ImageButton
-            android:id="@+id/btnCerrarDialog"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_alignParentEnd="true"
-            android:layout_marginTop="30dp"
-            android:layout_marginEnd="20dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_close"
-            app:tint="#FFFFFF" />
-    </RelativeLayout>
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        android:text="🎱 REGISTRO DE BOLAS"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:letterSpacing="0.1"/>
+
+    <ImageButton
+        android:id="@+id/btnCerrarDialog"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_alignParentEnd="true"
+        android:layout_centerVertical="true"
+        android:layout_marginEnd="16dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_close"
+        app:tint="#FF5252" /> </RelativeLayout>
 
     <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"/>
 
@@ -36,13 +45,13 @@
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnConfirmarBolas"
-        style="@style/Widget.MaterialComponents.Button.TextButton"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="50dp"
         android:layout_marginBottom="30dp"
-        android:text="CERRAR PANEL"
-        android:textColor="#BDBDBD"
+        android:text="CONFIRMAR Y CERRAR"
+        android:textColor="#FFFFFF"
         android:textStyle="bold"
-        android:textSize="12sp"
-        app:rippleColor="#4DFFFFFF" />
+        app:backgroundTint="#00C853"
+        app:cornerRadius="25dp"
+        app:elevation="4dp"/>
 </LinearLayout>

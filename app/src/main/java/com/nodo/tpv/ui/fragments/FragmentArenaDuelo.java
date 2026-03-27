@@ -666,30 +666,93 @@ public class FragmentArenaDuelo extends Fragment {
                             if (bolasAnotadas != null) {
                                 containerBolas.removeAllViews();
 
+                                List<Integer> listaMalasGuardadas = new ArrayList<>();
+
+                                // NUEVO: En lugar de contar bolas, sumamos sus valores
+                                int sumaPuntosPositivos = 0;
+
                                 for (BolaAnotada bola : bolasAnotadas) {
-                                    // CORRECCIÓN: Acceso directo a colorEquipo
                                     if (bola.colorEquipo == color) {
-                                        View bolaView = getLayoutInflater().inflate(R.layout.item_bola_visual, containerBolas, false);
-                                        TextView tvNum = bolaView.findViewById(R.id.tvBolaNumero);
 
-                                        // CORRECCIÓN: Acceso directo a numeroBola
-                                        tvNum.setText(String.valueOf(bola.numeroBola));
-                                        tvNum.getBackground().setTint(color);
-                                        tvNum.setTextColor(Color.WHITE);
+                                        if (bola.numeroBola < 0) {
+                                            // ES UNA MALA (Guardada como número negativo)
+                                            listaMalasGuardadas.add(bola.numeroBola);
+                                        } else {
+                                            // ES UNA BOLA POSITIVA
 
-                                        bolaView.setOnLongClickListener(v -> {
-                                            requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
-                                            new Thread(() -> {
-                                                // CORRECCIÓN: Acceso directo a numeroBola
-                                                AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, bola.numeroBola);
-                                            }).start();
+                                            // LA MAGIA ESTÁ AQUÍ: Sumamos el valor de la bola al total
+                                            sumaPuntosPositivos += bola.numeroBola;
 
-                                            // CORRECCIÓN: Acceso directo a numeroBola
-                                            Toast.makeText(getContext(), "Bola " + bola.numeroBola + " anulada.", Toast.LENGTH_SHORT).show();
-                                            return true;
-                                        });
+                                            View bolaView = getLayoutInflater().inflate(R.layout.item_bola_visual, containerBolas, false);
+                                            TextView tvNum = bolaView.findViewById(R.id.tvBolaNumero);
+                                            View bolaFondoColor = bolaView.findViewById(R.id.bolaFondoColor);
+                                            View bolaBandaColor = bolaView.findViewById(R.id.bolaBandaColor);
 
-                                        containerBolas.addView(bolaView);
+                                            int numeroBola = bola.numeroBola;
+                                            tvNum.setText(String.valueOf(numeroBola));
+                                            tvNum.setTextColor(Color.BLACK);
+
+                                            // Colores reales de billar
+                                            String colorHex;
+                                            switch (numeroBola) {
+                                                case 1: case 9:  colorHex = "#FDD835"; break;
+                                                case 2: case 10: colorHex = "#1E88E5"; break;
+                                                case 3: case 11: colorHex = "#E53935"; break;
+                                                case 4: case 12: colorHex = "#5E35B1"; break;
+                                                case 5: case 13: colorHex = "#FB8C00"; break;
+                                                case 6: case 14: colorHex = "#43A047"; break;
+                                                case 7: case 15: colorHex = "#6D4C41"; break;
+                                                case 8:          colorHex = "#212121"; break;
+                                                default:         colorHex = "#757575"; break;
+                                            }
+
+                                            int colorRealBola = Color.parseColor(colorHex);
+
+                                            if (numeroBola >= 9 && numeroBola <= 15) {
+                                                if (bolaFondoColor != null) bolaFondoColor.setBackgroundColor(Color.WHITE);
+                                                if (bolaBandaColor != null) {
+                                                    bolaBandaColor.setVisibility(View.VISIBLE);
+                                                    bolaBandaColor.setBackgroundColor(colorRealBola);
+                                                }
+                                            } else {
+                                                if (bolaFondoColor != null) bolaFondoColor.setBackgroundColor(colorRealBola);
+                                                if (bolaBandaColor != null) bolaBandaColor.setVisibility(View.GONE);
+                                            }
+
+                                            bolaView.setOnLongClickListener(v -> {
+                                                requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                                                new Thread(() -> AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, numeroBola)).start();
+                                                Toast.makeText(getContext(), "Bola " + numeroBola + " anulada.", Toast.LENGTH_SHORT).show();
+                                                return true;
+                                            });
+
+                                            containerBolas.addView(bolaView);
+                                        }
+                                    }
+                                }
+
+                                // === ACTUALIZAR TEXTOS Y SCORE TOTAL ===
+                                TextView tvMalasValor = vMarcador.findViewById(R.id.tvMalasValor);
+                                TextView tvScoreDinamico = vMarcador.findViewById(R.id.tvScoreDinamico);
+
+                                if (tvMalasValor != null) {
+                                    tvMalasValor.setText(String.valueOf(listaMalasGuardadas.size()));
+                                    tvMalasValor.setTag(listaMalasGuardadas);
+                                }
+
+                                if (tvScoreDinamico != null) {
+                                    // LA NUEVA MATEMÁTICA: (Suma del valor de las bolas) - (Cantidad de malas)
+                                    int totalPuntos = sumaPuntosPositivos - listaMalasGuardadas.size();
+
+                                    tvScoreDinamico.setText(String.valueOf(totalPuntos));
+
+                                    // Colorear el resultado
+                                    if (totalPuntos < 0) {
+                                        tvScoreDinamico.setTextColor(Color.parseColor("#FF1744")); // Rojo si está negativo
+                                    } else if (totalPuntos > 0) {
+                                        tvScoreDinamico.setTextColor(Color.parseColor("#00E5FF")); // Cyan si va ganando (Combina con tu diseño Ghost)
+                                    } else {
+                                        tvScoreDinamico.setTextColor(Color.WHITE); // Blanco si está en cero
                                     }
                                 }
                             }
@@ -747,18 +810,9 @@ public class FragmentArenaDuelo extends Fragment {
         TextView tvCantidad = view.findViewById(R.id.tvCantidadMalas);
         android.widget.SeekBar slider = view.findViewById(R.id.sliderMalas);
 
-        int malasActuales = 0;
-        if (containerMalasVisual != null && containerMalasVisual.getChildCount() > 0) {
-            View malaView = containerMalasVisual.getChildAt(0);
-            TextView tvNum = malaView.findViewById(R.id.tvBolaNumero);
-            if (tvNum != null) {
-                try { malasActuales = Integer.parseInt(tvNum.getText().toString()); }
-                catch (NumberFormatException ignored) {}
-            }
-        }
-
-        slider.setProgress(malasActuales);
-        tvCantidad.setText(String.valueOf(malasActuales));
+        // Por defecto, cuando abres el panel, asumes que cometió 1 falta nueva
+        slider.setProgress(1);
+        tvCantidad.setText("1");
 
         slider.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -772,19 +826,12 @@ public class FragmentArenaDuelo extends Fragment {
         view.findViewById(R.id.btnCerrarDialog).setOnClickListener(v -> dialog.dismiss());
 
         view.findViewById(R.id.btnConfirmarMalas).setOnClickListener(v -> {
-            int nuevasMalas = slider.getProgress();
-            if (containerMalasVisual != null) {
-                containerMalasVisual.removeAllViews();
-                if (nuevasMalas > 0) {
-                    View bolaMala = getLayoutInflater().inflate(R.layout.item_bola_visual, containerMalasVisual, false);
-                    TextView tvNum = bolaMala.findViewById(R.id.tvBolaNumero);
-                    tvNum.setText(String.valueOf(nuevasMalas));
-                    tvNum.getBackground().setTint(Color.parseColor("#FF1744"));
-                    tvNum.setTextColor(Color.WHITE);
-                    containerMalasVisual.addView(bolaMala);
-
-                    bolaMala.setScaleX(0); bolaMala.setScaleY(0);
-                    bolaMala.animate().scaleX(1.1f).scaleY(1.1f).setDuration(200).start();
+            int faltasCometidas = slider.getProgress();
+            if (faltasCometidas > 0) {
+                String uuidActual = arenaViewModel.getUuidDueloActual();
+                if(uuidActual != null) {
+                    // Ahora procesamos directo en la Base de Datos
+                    procesarFaltaEnBaseDeDatos(uuidActual, colorEquipo, faltasCometidas);
                 }
             }
             dialog.dismiss();
@@ -983,4 +1030,169 @@ public class FragmentArenaDuelo extends Fragment {
                 })
                 .start();
     }
+
+    // Método que calcula quién paga la falta
+    private void procesarFalta(int colorInfractor, int cantidadFaltasCometidas) {
+        int faltasRestantes = cantidadFaltasCometidas;
+
+        // 1. Buscar si OTROS jugadores tienen malas para descontárselas primero
+        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
+            View vMarcador = containerMarcadoresDinamicos.getChildAt(i);
+            if (vMarcador.getTag() instanceof Integer) {
+                int colorOtro = (int) vMarcador.getTag();
+
+                if (colorOtro != colorInfractor) {
+                    LinearLayout containerMalas = vMarcador.findViewById(R.id.containerMalasVisual);
+                    int malasOtro = obtenerMalasDeVista(containerMalas);
+
+                    if (malasOtro > 0) {
+                        if (faltasRestantes >= malasOtro) {
+                            // La falta nueva limpia TODAS las malas de este jugador
+                            faltasRestantes -= malasOtro;
+                            actualizarVistaMalas(containerMalas, 0);
+                        } else {
+                            // La falta nueva solo limpia ALGUNAS malas
+                            actualizarVistaMalas(containerMalas, malasOtro - faltasRestantes);
+                            faltasRestantes = 0;
+                            break; // Ya se agotaron las faltas cometidas
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Si sobraron faltas (nadie más tenía, o no alcanzaron a absorberlas), se las queda el infractor
+        if (faltasRestantes > 0) {
+            for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
+                View vMarcador = containerMarcadoresDinamicos.getChildAt(i);
+                if (vMarcador.getTag() instanceof Integer && (int) vMarcador.getTag() == colorInfractor) {
+                    LinearLayout containerMalas = vMarcador.findViewById(R.id.containerMalasVisual);
+                    int malasPropias = obtenerMalasDeVista(containerMalas);
+                    actualizarVistaMalas(containerMalas, malasPropias + faltasRestantes);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Método auxiliar para leer cuántas malas tiene un jugador en pantalla
+    private int obtenerMalasDeVista(LinearLayout container) {
+        if (container != null && container.getChildCount() > 0) {
+            View malaView = container.getChildAt(0);
+            TextView tvNum = malaView.findViewById(R.id.tvBolaNumero);
+            try { return Integer.parseInt(tvNum.getText().toString()); }
+            catch (Exception e) { return 0; }
+        }
+        return 0;
+    }
+
+    // Método auxiliar para dibujar (o borrar) la bola roja de malas
+    private void actualizarVistaMalas(LinearLayout container, int cantidad) {
+        container.removeAllViews();
+        if (cantidad > 0) {
+            View bolaMala = getLayoutInflater().inflate(R.layout.item_bola_visual, container, false);
+            TextView tvNum = bolaMala.findViewById(R.id.tvBolaNumero);
+            View bolaFondoColor = bolaMala.findViewById(R.id.bolaFondoColor);
+            View bolaBandaColor = bolaMala.findViewById(R.id.bolaBandaColor);
+
+            tvNum.setText(String.valueOf(cantidad));
+            tvNum.setTextColor(Color.WHITE);
+
+            if (bolaFondoColor != null) bolaFondoColor.setBackgroundColor(Color.parseColor("#FF1744"));
+            if (bolaBandaColor != null) bolaBandaColor.setVisibility(View.GONE);
+
+            container.addView(bolaMala);
+
+            // Animación de impacto
+            bolaMala.setScaleX(0.5f); bolaMala.setScaleY(0.5f);
+            bolaMala.animate().scaleX(1f).scaleY(1f).setDuration(300)
+                    .setInterpolator(new android.view.animation.OvershootInterpolator()).start();
+        }
+    }
+
+    private void procesarFaltaEnBaseDeDatos(String uuidActual, int colorInfractor, int cantidadFaltasCometidas) {
+        int faltasRestantes = cantidadFaltasCometidas;
+        List<Runnable> dbOperations = new ArrayList<>();
+
+        // 1. Recopilar el estado actual y buscar el ID negativo más bajo en TODA la mesa
+        Map<Integer, List<Integer>> malasPorJugador = new HashMap<>();
+        int minNumeroNegativo = 0; // Guardará el ID más bajo (ej. -3) para no repetirlo
+
+        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
+            View vMarcador = containerMarcadoresDinamicos.getChildAt(i);
+            if (vMarcador.getTag() instanceof Integer) {
+                int color = (int) vMarcador.getTag();
+                TextView tvMalas = vMarcador.findViewById(R.id.tvMalasValor);
+
+                List<Integer> malas = (List<Integer>) tvMalas.getTag();
+                if (malas == null) malas = new ArrayList<>();
+                malasPorJugador.put(color, new ArrayList<>(malas));
+
+                // Escaneamos para encontrar el número más negativo usado en la mesa
+                for (int m : malas) {
+                    if (m < minNumeroNegativo) {
+                        minNumeroNegativo = m;
+                    }
+                }
+            }
+        }
+
+        // 2. Lógica de "Mesa Sucia" (El último limpia)
+        while (faltasRestantes > 0) {
+            boolean todosLosOtrosTienenMalas = true;
+
+            // Verificamos si hay alguien "limpio" en la mesa
+            for (Map.Entry<Integer, List<Integer>> entry : malasPorJugador.entrySet()) {
+                if (entry.getKey() != colorInfractor) {
+                    if (entry.getValue().isEmpty()) {
+                        todosLosOtrosTienenMalas = false;
+                        break;
+                    }
+                }
+            }
+
+            if (todosLosOtrosTienenMalas) {
+                // Todos deben, así que procedemos a limpiarles 1 mala a cada uno
+                for (Map.Entry<Integer, List<Integer>> entry : malasPorJugador.entrySet()) {
+                    if (entry.getKey() != colorInfractor) {
+                        List<Integer> malasOtro = entry.getValue();
+
+                        // Extraemos el ID de la mala para decirle a la Base de Datos que la borre
+                        int idParaBorrar = malasOtro.remove(malasOtro.size() - 1);
+                        dbOperations.add(() -> {
+                            AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, idParaBorrar);
+                        });
+                    }
+                }
+                faltasRestantes--; // Gastó 1 falta en limpiar a la mesa
+            } else {
+                // Alguien está limpio, se rompe la limpieza
+                break;
+            }
+        }
+
+        // 3. Si le sobraron faltas al infractor, se las inyectamos con IDs únicos
+        if (faltasRestantes > 0) {
+            // Empezamos a contar desde el número más negativo encontrado en toda la mesa
+            int siguienteNumeroNegativo = minNumeroNegativo - 1;
+
+            for (int k = 0; k < faltasRestantes; k++) {
+                final int malaToInsert = siguienteNumeroNegativo;
+                dbOperations.add(() -> {
+                    AppDatabase.getInstance(requireContext()).bolaDueloDao().insertarBola(
+                            new BolaAnotada(uuidActual, colorInfractor, malaToInsert)
+                    );
+                });
+                siguienteNumeroNegativo--;
+            }
+        }
+
+        // 4. Ejecutamos los borrados e inserciones en segundo plano
+        new Thread(() -> {
+            for (Runnable op : dbOperations) {
+                op.run();
+            }
+        }).start();
+    }
+
 }
