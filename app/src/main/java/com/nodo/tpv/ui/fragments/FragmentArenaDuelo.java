@@ -179,6 +179,10 @@ public class FragmentArenaDuelo extends Fragment {
 
             pedidoViewModel.despacharTodoLaMesa(idMesaActual, idOperativo, loginOperativo);
             toggleDespacho(false);
+
+            // 🔥 SOLUCIÓN CAMBIO 2: Sincronizar inmediatamente la bolsa tras despachar todo
+            arenaViewModel.recuperarDueloActivo(idMesaActual);
+
             Toast.makeText(getContext(), "Despachando productos...", Toast.LENGTH_SHORT).show();
         });
 
@@ -227,6 +231,11 @@ public class FragmentArenaDuelo extends Fragment {
             hayPendientesBloqueantes = (count != null && count > 0);
             tvBadgePendientes.setVisibility(hayPendientesBloqueantes ? View.VISIBLE : View.GONE);
             tvBadgePendientes.setText(String.valueOf(count));
+
+            // 🔥 SOLUCIÓN CAMBIO 2: Refrescar la bolsa cada vez que cambia el estado de los pendientes
+            // (Asegura que el valor se actualice en tiempo real sin importar quién o cómo despache)
+            arenaViewModel.recuperarDueloActivo(idMesaActual);
+
             actualizarEstadoVisualMarcadores();
         });
 
@@ -310,16 +319,8 @@ public class FragmentArenaDuelo extends Fragment {
     // --- LÓGICA DE JUEGO Y MARCADORES ---
 
     private void validarYProcesarPunto(int colorEquipo) {
-        if (hayPendientesBloqueantes) {
-            Toast.makeText(getContext(), "Despacha la munición pendiente ⏳", Toast.LENGTH_SHORT).show();
-            toggleDespacho(true);
-            return;
-        }
-
-        if (municionActual == null || municionActual.isEmpty()) {
-            Toast.makeText(getContext(), "No hay munición en juego", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        // 🔥 SOLUCIÓN CAMBIO 1: Se eliminaron las validaciones que bloqueaban la puntuación
+        // Ahora se puede puntuar aunque haya pendientes o no haya munición.
 
         if (switchPin != null && switchPin.isChecked()) {
             solicitarPinYRegistrar(colorEquipo);
@@ -386,6 +387,9 @@ public class FragmentArenaDuelo extends Fragment {
                     rvDespachoLateral.setLayoutManager(new LinearLayoutManager(getContext()));
                     rvDespachoLateral.setAdapter(new LogBatallaAdapter(lista, item -> {
                         pedidoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
+
+                        // 🔥 SOLUCIÓN CAMBIO 2: Sincronizar inmediatamente bolsa al despachar 1 por 1
+                        arenaViewModel.recuperarDueloActivo(idMesaActual);
                     }));
                     if (lista.isEmpty() && despachoVisible) toggleDespacho(false);
                 }
@@ -437,7 +441,6 @@ public class FragmentArenaDuelo extends Fragment {
         BigDecimal total = BigDecimal.ZERO;
         if (productos != null) {
             for (Producto p : productos) {
-                // CORRECCIÓN: Acceso directo a la variable precioProducto
                 total = total.add(p.precioProducto);
             }
         }
@@ -484,11 +487,11 @@ public class FragmentArenaDuelo extends Fragment {
 
     private void actualizarEstadoVisualMarcadores() {
         if (containerMarcadoresDinamicos == null) return;
-        float opacidad = hayPendientesBloqueantes ? 0.4f : 1.0f;
+        // 🔥 SOLUCIÓN CAMBIO 1: Ya no opacamos ni deshabilitamos los marcadores si hay pendientes
         for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
             View v = containerMarcadoresDinamicos.getChildAt(i);
-            v.setAlpha(opacidad);
-            v.setEnabled(!hayPendientesBloqueantes);
+            v.setAlpha(1.0f);
+            v.setEnabled(true);
         }
     }
 
@@ -636,12 +639,8 @@ public class FragmentArenaDuelo extends Fragment {
 
             View btnFalta = vMarcador.findViewById(R.id.btnFalta);
             if (btnFalta != null) {
+                // 🔥 SOLUCIÓN CAMBIO 1: Botón Falta sin bloqueo
                 btnFalta.setOnClickListener(v -> {
-                    if (hayPendientesBloqueantes) {
-                        Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
-                        toggleDespacho(true);
-                        return;
-                    }
                     requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                     abrirPanelSeleccionMalas(color, containerMalas);
                 });
@@ -649,12 +648,8 @@ public class FragmentArenaDuelo extends Fragment {
 
             View btnAnotarBola = vMarcador.findViewById(R.id.btnAnotarBola);
             if (btnAnotarBola != null) {
+                // 🔥 SOLUCIÓN CAMBIO 1: Botón Bola sin bloqueo
                 btnAnotarBola.setOnClickListener(v -> {
-                    if (hayPendientesBloqueantes) {
-                        Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
-                        toggleDespacho(true);
-                        return;
-                    }
                     abrirPanelSeleccionBolas(color);
                 });
             }
@@ -667,20 +662,14 @@ public class FragmentArenaDuelo extends Fragment {
                                 containerBolas.removeAllViews();
 
                                 List<Integer> listaMalasGuardadas = new ArrayList<>();
-
-                                // NUEVO: En lugar de contar bolas, sumamos sus valores
                                 int sumaPuntosPositivos = 0;
 
                                 for (BolaAnotada bola : bolasAnotadas) {
                                     if (bola.colorEquipo == color) {
 
                                         if (bola.numeroBola < 0) {
-                                            // ES UNA MALA (Guardada como número negativo)
                                             listaMalasGuardadas.add(bola.numeroBola);
                                         } else {
-                                            // ES UNA BOLA POSITIVA
-
-                                            // LA MAGIA ESTÁ AQUÍ: Sumamos el valor de la bola al total
                                             sumaPuntosPositivos += bola.numeroBola;
 
                                             View bolaView = getLayoutInflater().inflate(R.layout.item_bola_visual, containerBolas, false);
@@ -692,7 +681,6 @@ public class FragmentArenaDuelo extends Fragment {
                                             tvNum.setText(String.valueOf(numeroBola));
                                             tvNum.setTextColor(Color.BLACK);
 
-                                            // Colores reales de billar
                                             String colorHex;
                                             switch (numeroBola) {
                                                 case 1: case 9:  colorHex = "#FDD835"; break;
@@ -731,7 +719,6 @@ public class FragmentArenaDuelo extends Fragment {
                                     }
                                 }
 
-                                // === ACTUALIZAR TEXTOS Y SCORE TOTAL ===
                                 TextView tvMalasValor = vMarcador.findViewById(R.id.tvMalasValor);
                                 TextView tvScoreDinamico = vMarcador.findViewById(R.id.tvScoreDinamico);
 
@@ -741,31 +728,23 @@ public class FragmentArenaDuelo extends Fragment {
                                 }
 
                                 if (tvScoreDinamico != null) {
-                                    // LA NUEVA MATEMÁTICA: (Suma del valor de las bolas) - (Cantidad de malas)
                                     int totalPuntos = sumaPuntosPositivos - listaMalasGuardadas.size();
-
                                     tvScoreDinamico.setText(String.valueOf(totalPuntos));
 
-                                    // Colorear el resultado
                                     if (totalPuntos < 0) {
-                                        tvScoreDinamico.setTextColor(Color.parseColor("#FF1744")); // Rojo si está negativo
+                                        tvScoreDinamico.setTextColor(Color.parseColor("#FF1744"));
                                     } else if (totalPuntos > 0) {
-                                        tvScoreDinamico.setTextColor(Color.parseColor("#00E5FF")); // Cyan si va ganando (Combina con tu diseño Ghost)
+                                        tvScoreDinamico.setTextColor(Color.parseColor("#00E5FF"));
                                     } else {
-                                        tvScoreDinamico.setTextColor(Color.WHITE); // Blanco si está en cero
+                                        tvScoreDinamico.setTextColor(Color.WHITE);
                                     }
                                 }
                             }
                         });
             }
 
+            // 🔥 SOLUCIÓN CAMBIO 1: Marcador sin bloqueo por despachos
             vMarcador.setOnLongClickListener(v -> {
-                if (hayPendientesBloqueantes) {
-                    Toast.makeText(getContext(), "Despacha la munición primero ⏳", Toast.LENGTH_SHORT).show();
-                    toggleDespacho(true);
-                    return true;
-                }
-
                 requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
 
                 if ("ULTIMO_PAGA".equals(reglaActualSync)) {
@@ -810,7 +789,6 @@ public class FragmentArenaDuelo extends Fragment {
         TextView tvCantidad = view.findViewById(R.id.tvCantidadMalas);
         android.widget.SeekBar slider = view.findViewById(R.id.sliderMalas);
 
-        // Por defecto, cuando abres el panel, asumes que cometió 1 falta nueva
         slider.setProgress(1);
         tvCantidad.setText("1");
 
@@ -830,7 +808,6 @@ public class FragmentArenaDuelo extends Fragment {
             if (faltasCometidas > 0) {
                 String uuidActual = arenaViewModel.getUuidDueloActual();
                 if(uuidActual != null) {
-                    // Ahora procesamos directo en la Base de Datos
                     procesarFaltaEnBaseDeDatos(uuidActual, colorEquipo, faltasCometidas);
                 }
             }
@@ -1031,11 +1008,9 @@ public class FragmentArenaDuelo extends Fragment {
                 .start();
     }
 
-    // Método que calcula quién paga la falta
     private void procesarFalta(int colorInfractor, int cantidadFaltasCometidas) {
         int faltasRestantes = cantidadFaltasCometidas;
 
-        // 1. Buscar si OTROS jugadores tienen malas para descontárselas primero
         for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
             View vMarcador = containerMarcadoresDinamicos.getChildAt(i);
             if (vMarcador.getTag() instanceof Integer) {
@@ -1047,21 +1022,18 @@ public class FragmentArenaDuelo extends Fragment {
 
                     if (malasOtro > 0) {
                         if (faltasRestantes >= malasOtro) {
-                            // La falta nueva limpia TODAS las malas de este jugador
                             faltasRestantes -= malasOtro;
                             actualizarVistaMalas(containerMalas, 0);
                         } else {
-                            // La falta nueva solo limpia ALGUNAS malas
                             actualizarVistaMalas(containerMalas, malasOtro - faltasRestantes);
                             faltasRestantes = 0;
-                            break; // Ya se agotaron las faltas cometidas
+                            break;
                         }
                     }
                 }
             }
         }
 
-        // 2. Si sobraron faltas (nadie más tenía, o no alcanzaron a absorberlas), se las queda el infractor
         if (faltasRestantes > 0) {
             for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
                 View vMarcador = containerMarcadoresDinamicos.getChildAt(i);
@@ -1075,7 +1047,6 @@ public class FragmentArenaDuelo extends Fragment {
         }
     }
 
-    // Método auxiliar para leer cuántas malas tiene un jugador en pantalla
     private int obtenerMalasDeVista(LinearLayout container) {
         if (container != null && container.getChildCount() > 0) {
             View malaView = container.getChildAt(0);
@@ -1086,7 +1057,6 @@ public class FragmentArenaDuelo extends Fragment {
         return 0;
     }
 
-    // Método auxiliar para dibujar (o borrar) la bola roja de malas
     private void actualizarVistaMalas(LinearLayout container, int cantidad) {
         container.removeAllViews();
         if (cantidad > 0) {
@@ -1103,7 +1073,6 @@ public class FragmentArenaDuelo extends Fragment {
 
             container.addView(bolaMala);
 
-            // Animación de impacto
             bolaMala.setScaleX(0.5f); bolaMala.setScaleY(0.5f);
             bolaMala.animate().scaleX(1f).scaleY(1f).setDuration(300)
                     .setInterpolator(new android.view.animation.OvershootInterpolator()).start();
@@ -1114,9 +1083,8 @@ public class FragmentArenaDuelo extends Fragment {
         int faltasRestantes = cantidadFaltasCometidas;
         List<Runnable> dbOperations = new ArrayList<>();
 
-        // 1. Recopilar el estado actual y buscar el ID negativo más bajo en TODA la mesa
         Map<Integer, List<Integer>> malasPorJugador = new HashMap<>();
-        int minNumeroNegativo = 0; // Guardará el ID más bajo (ej. -3) para no repetirlo
+        int minNumeroNegativo = 0;
 
         for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
             View vMarcador = containerMarcadoresDinamicos.getChildAt(i);
@@ -1128,7 +1096,6 @@ public class FragmentArenaDuelo extends Fragment {
                 if (malas == null) malas = new ArrayList<>();
                 malasPorJugador.put(color, new ArrayList<>(malas));
 
-                // Escaneamos para encontrar el número más negativo usado en la mesa
                 for (int m : malas) {
                     if (m < minNumeroNegativo) {
                         minNumeroNegativo = m;
@@ -1137,11 +1104,9 @@ public class FragmentArenaDuelo extends Fragment {
             }
         }
 
-        // 2. Lógica de "Mesa Sucia" (El último limpia)
         while (faltasRestantes > 0) {
             boolean todosLosOtrosTienenMalas = true;
 
-            // Verificamos si hay alguien "limpio" en la mesa
             for (Map.Entry<Integer, List<Integer>> entry : malasPorJugador.entrySet()) {
                 if (entry.getKey() != colorInfractor) {
                     if (entry.getValue().isEmpty()) {
@@ -1152,28 +1117,23 @@ public class FragmentArenaDuelo extends Fragment {
             }
 
             if (todosLosOtrosTienenMalas) {
-                // Todos deben, así que procedemos a limpiarles 1 mala a cada uno
                 for (Map.Entry<Integer, List<Integer>> entry : malasPorJugador.entrySet()) {
                     if (entry.getKey() != colorInfractor) {
                         List<Integer> malasOtro = entry.getValue();
 
-                        // Extraemos el ID de la mala para decirle a la Base de Datos que la borre
                         int idParaBorrar = malasOtro.remove(malasOtro.size() - 1);
                         dbOperations.add(() -> {
                             AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, idParaBorrar);
                         });
                     }
                 }
-                faltasRestantes--; // Gastó 1 falta en limpiar a la mesa
+                faltasRestantes--;
             } else {
-                // Alguien está limpio, se rompe la limpieza
                 break;
             }
         }
 
-        // 3. Si le sobraron faltas al infractor, se las inyectamos con IDs únicos
         if (faltasRestantes > 0) {
-            // Empezamos a contar desde el número más negativo encontrado en toda la mesa
             int siguienteNumeroNegativo = minNumeroNegativo - 1;
 
             for (int k = 0; k < faltasRestantes; k++) {
@@ -1187,12 +1147,10 @@ public class FragmentArenaDuelo extends Fragment {
             }
         }
 
-        // 4. Ejecutamos los borrados e inserciones en segundo plano
         new Thread(() -> {
             for (Runnable op : dbOperations) {
                 op.run();
             }
         }).start();
     }
-
 }
