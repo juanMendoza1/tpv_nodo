@@ -5,64 +5,90 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginVertical="6dp"
-    app:cardBackgroundColor="#1AFFFFFF"
+    android:layout_marginHorizontal="4dp"
+    app:cardBackgroundColor="@android:color/transparent"
     app:cardCornerRadius="16dp"
+    app:cardElevation="0dp"
     app:strokeColor="#33FFFFFF"
     app:strokeWidth="1dp">
-
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:padding="12dp">
+        android:background="#14FFFFFF"
+        android:paddingVertical="12dp"
+        android:paddingHorizontal="12dp">
+        <View
+            android:id="@+id/accentLine"
+            android:layout_width="4dp"
+            android:layout_height="0dp"
+            android:background="#00E5FF"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
 
-        <ImageView
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_shopping_basket"
-            android:padding="8dp"
-            app:tint="#80FFFFFF"
-            android:background="@drawable/bg_avatar_circle"
-            android:backgroundTint="#1AFFFFFF"/>
+        <TextView
+            android:id="@+id/tvCantidadProdDespacho"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="2x"
+            android:textColor="#00E5FF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginStart="12dp"
+            app:layout_constraintStart_toEndOf="@id/accentLine"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/tvNombreProdDespacho"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:layout_marginStart="16dp">
+            android:text="Cerveza Poker"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
+            android:maxLines="2"
+            android:ellipsize="end"
+            app:layout_constraintStart_toEndOf="@id/tvCantidadProdDespacho"
+            app:layout_constraintEnd_toStartOf="@id/icRelojEspera"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
 
-            <TextView
-                android:id="@+id/tvNombreProdDespacho"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="CERVEZA POKER"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="PENDIENTE DE ENTREGA"
-                android:textColor="#FF1744"
-                android:textSize="10sp"
-                android:letterSpacing="0.1" />
-        </LinearLayout>
+        <ImageView
+            android:id="@+id/icRelojEspera"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_timer"
+            app:tint="#FFD54F"
+            android:layout_marginEnd="12dp"
+            app:layout_constraintEnd_toStartOf="@id/btnConfirmarItem"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnConfirmarItem"
             style="@style/Widget.MaterialComponents.Button.Icon"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
             app:icon="@drawable/ic_check_circle"
-            app:iconSize="28dp"
-            app:iconTint="#00E5FF"
-            app:backgroundTint="#1A00E5FF"
-            app:cornerRadius="24dp"
-            app:strokeColor="#00E5FF"
-            app:strokeWidth="1dp" />
+            app:iconSize="24dp"
+            app:iconTint="#00E676"
+            app:backgroundTint="#1A00E676"
+            app:cornerRadius="21dp"
+            app:strokeColor="#00E676"
+            app:strokeWidth="1dp"
+            app:iconGravity="textStart"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            app:elevation="0dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"/>
 
-    </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView>

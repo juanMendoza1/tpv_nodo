@@ -76,7 +76,10 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:background="@drawable/bg_ghost_gradient"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="12dp">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/fabSeleccionarMunicion"
@@ -84,13 +87,13 @@
                 android:layout_width="56dp"
                 android:layout_height="56dp"
                 android:layout_marginBottom="8dp"
-                app:backgroundTint="#4D000000"
+                app:backgroundTint="@android:color/transparent"
                 app:cornerRadius="28dp"
                 app:icon="@drawable/ic_shopping_bag"
                 app:iconSize="26dp"
                 app:iconTint="#FFD600"
-                app:strokeColor="#FFD600"
-                app:strokeWidth="1.5dp" />
+                app:strokeColor="#33FFFFFF"
+                app:strokeWidth="1dp" />
 
             <LinearLayout
                 android:id="@+id/containerBolsaMinimizada"
@@ -98,7 +101,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 android:background="@drawable/bg_badge_monto"
-                android:backgroundTint="#4D000000"
+                android:backgroundTint="#1AFFFFFF"
                 android:gravity="center"
                 android:orientation="vertical"
                 android:paddingVertical="6dp">
@@ -126,13 +129,13 @@
                     android:layout_height="56dp"
                     android:clickable="false"
                     android:focusable="false"
-                    app:backgroundTint="#4D000000"
+                    app:backgroundTint="@android:color/transparent"
                     app:cornerRadius="28dp"
                     app:icon="@drawable/ic_shopping_basket"
                     app:iconSize="26dp"
                     app:iconTint="#FF1744"
-                    app:strokeColor="#4DFF1744"
-                    app:strokeWidth="1.5dp" />
+                    app:strokeColor="#33FFFFFF"
+                    app:strokeWidth="1dp" />
 
                 <TextView
                     android:id="@+id/tvBadgePendientes"
@@ -154,12 +157,13 @@
                 style="@style/Widget.MaterialComponents.Button.Icon"
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                app:backgroundTint="#4D000000"
+                android:layout_marginBottom="16dp"
+                app:backgroundTint="@android:color/transparent"
                 app:cornerRadius="28dp"
                 app:icon="@drawable/ic_history"
                 app:iconSize="26dp"
-                app:iconTint="#FFD600"
-                app:strokeColor="#4DFFD600"
+                app:iconTint="#B388FF"
+                app:strokeColor="#33FFFFFF"
                 app:strokeWidth="1dp" />
 
             <com.google.android.material.button.MaterialButton
@@ -168,12 +172,12 @@
                 android:layout_width="56dp"
                 android:layout_height="56dp"
                 android:layout_marginBottom="16dp"
-                app:backgroundTint="#4D000000"
+                app:backgroundTint="@android:color/transparent"
                 app:cornerRadius="28dp"
                 app:icon="@drawable/ic_settings"
                 app:iconSize="24dp"
-                app:iconTint="#FFFFFF"
-                app:strokeColor="#4DFFFFFF"
+                app:iconTint="#00E5FF"
+                app:strokeColor="#33FFFFFF"
                 app:strokeWidth="1dp" />
 
             <com.google.android.material.button.MaterialButton
@@ -182,13 +186,13 @@
                 android:layout_width="56dp"
                 android:layout_height="56dp"
                 android:layout_marginBottom="16dp"
-                app:backgroundTint="#4D00E5FF"
+                app:backgroundTint="@android:color/transparent"
                 app:cornerRadius="28dp"
                 app:icon="@drawable/ic_track_changes"
                 app:iconSize="26dp"
                 app:iconTint="#00E5FF"
-                app:strokeColor="#00E5FF"
-                app:strokeWidth="1.5dp" />
+                app:strokeColor="#33FFFFFF"
+                app:strokeWidth="1dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnVAR"
@@ -196,26 +200,26 @@
                 android:layout_width="56dp"
                 android:layout_height="56dp"
                 android:layout_marginBottom="16dp"
-                app:backgroundTint="#4DFF1744"
+                app:backgroundTint="@android:color/transparent"
                 app:cornerRadius="28dp"
                 app:icon="@drawable/ic_videocam"
                 app:iconSize="26dp"
-                app:iconTint="#FFFFFF"
-                app:strokeColor="#FF1744"
-                app:strokeWidth="1.5dp" />
+                app:iconTint="#FF1744"
+                app:strokeColor="#33FFFFFF"
+                app:strokeWidth="1dp" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnExpandirArena"
                 style="@style/Widget.MaterialComponents.Button.Icon"
                 android:layout_width="56dp"
                 android:layout_height="56dp"
-                android:layout_marginBottom="16dp"
-                app:backgroundTint="#4D000000"
+                android:layout_marginBottom="8dp"
+                app:backgroundTint="@android:color/transparent"
                 app:cornerRadius="28dp"
                 app:icon="@drawable/ic_fullscreen"
                 app:iconSize="26dp"
-                app:iconTint="#FFFFFF"
-                app:strokeColor="#4DFFFFFF"
+                app:iconTint="#00E5FF"
+                app:strokeColor="#33FFFFFF"
                 app:strokeWidth="1dp" />
 
         </LinearLayout>
@@ -292,14 +296,14 @@
             android:backgroundTint="#1A000000"
             android:letterSpacing="0.1"
             android:text="FINALIZAR BATALLA"
-            android:textColor="#FFFFFF"
+            android:textColor="#00E5FF"
             android:textSize="14sp"
             android:textStyle="bold"
             app:cornerRadius="25dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:strokeColor="#FFD600"
+            app:strokeColor="#00E5FF"
             app:strokeWidth="1.5dp" />
 
         <TextView
@@ -319,49 +323,64 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/panelConfigDeslizable"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F2080808"
+        android:background="#E60B132B"
         android:elevation="40dp"
-        android:orientation="vertical"
         android:visibility="gone"
         android:translationX="1000dp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
 
         <TextView
+            android:id="@+id/tvTituloConfig"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="REGLAS Y SEGURIDAD"
             android:textColor="#FFFFFF"
             android:gravity="center"
-            android:textSize="12sp"
+            android:textSize="14sp"
             android:textStyle="bold"
-            android:paddingTop="18dp"
-            android:paddingBottom="12dp" />
+            android:letterSpacing="0.1"
+            android:layout_marginTop="24dp"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <View
+            android:id="@+id/divisorConfig"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26FFFFFF"
+            android:layout_marginTop="16dp"
+            android:layout_marginHorizontal="24dp"
+            app:layout_constraintTop_toBottomOf="@id/tvTituloConfig" />
 
         <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1">
+            app:layout_constraintTop_toBottomOf="@id/divisorConfig"
+            app:layout_constraintBottom_toTopOf="@id/btnCerrarConfig">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingHorizontal="16dp"
-                android:paddingBottom="12dp">
+                android:paddingHorizontal="24dp"
+                android:paddingTop="16dp"
+                android:paddingBottom="24dp">
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="MODALIDAD DE COBRO"
-                    android:textColor="#80FFFFFF"
-                    android:textSize="14sp"
+                    android:textColor="#00E5FF"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
                     android:letterSpacing="0.1"
-                    android:layout_marginBottom="16dp" />
+                    android:layout_marginBottom="12dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnReglaGanador"
@@ -371,7 +390,8 @@
                     android:text="GANA BANDO (Reparto Resto)"
                     android:textColor="#FFFFFF"
                     android:layout_marginBottom="8dp"
-                    app:strokeColor="#4DFFFFFF" />
+                    app:strokeColor="#4DFFFFFF"
+                    app:cornerRadius="16dp"/>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnReglaTodos"
@@ -381,7 +401,8 @@
                     android:text="REPARTO EQUITATIVO (Todos)"
                     android:textColor="#FFFFFF"
                     android:layout_marginBottom="8dp"
-                    app:strokeColor="#4DFFFFFF" />
+                    app:strokeColor="#4DFFFFFF"
+                    app:cornerRadius="16dp"/>
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnReglaUltimo"
@@ -390,23 +411,28 @@
                     android:layout_height="64dp"
                     android:text="EL ÚLTIMO PAGA TODO"
                     android:textColor="#FFFFFF"
-                    android:layout_marginBottom="16dp"
-                    app:strokeColor="#4DFFFFFF" />
+                    android:layout_marginBottom="24dp"
+                    app:strokeColor="#4DFFFFFF"
+                    app:cornerRadius="16dp"/>
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="CONTROL DE MARCADOR"
-                    android:textColor="#80FFFFFF"
-                    android:textSize="14sp"
+                    android:textColor="#FFD54F"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
                     android:letterSpacing="0.1"
-                    android:layout_marginBottom="16dp" />
+                    android:layout_marginBottom="12dp" />
 
                 <com.google.android.material.card.MaterialCardView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    app:cardBackgroundColor="#1AFFFFFF"
-                    app:contentPadding="24dp"
+                    app:cardBackgroundColor="#0AFFFFFF"
+                    app:cardElevation="0dp"
+                    app:strokeColor="#26FFFFFF"
+                    app:strokeWidth="1dp"
+                    app:contentPadding="16dp"
                     app:cardCornerRadius="16dp">
 
                     <LinearLayout
@@ -419,16 +445,16 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="Solicitar PIN para anotar"
+                            android:text="Solicitar PIN para anotar puntos"
                             android:textColor="#FFFFFF"
-                            android:textSize="16sp" />
+                            android:textSize="14sp" />
 
                         <com.google.android.material.switchmaterial.SwitchMaterial
                             android:id="@+id/switchRequierePin"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            app:thumbTint="@color/white"
-                            app:trackTint="#565654" />
+                            app:thumbTint="#FFD54F"
+                            app:trackTint="#4DFFFFFF" />
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
@@ -437,61 +463,94 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCerrarConfig"
-            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
-            android:layout_width="match_parent"
-            android:layout_height="64dp"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
             android:text="CERRAR AJUSTES"
-            app:backgroundTint="#565654"
-            android:textColor="#000000"
-            android:layout_margin="32dp" />
-    </LinearLayout>
+            android:textColor="#90A4AE"
+            android:textSize="10sp"
+            android:letterSpacing="0.1"
+            android:layout_marginHorizontal="24dp"
+            android:layout_marginBottom="12dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
 
-    <LinearLayout
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/panelHistorialDeslizable"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#F2080808"
-        android:elevation="40dp"
-        android:orientation="vertical"
-        android:padding="12dp"
+        android:background="#E60B132B"
+        android:elevation="45dp"
         android:visibility="gone"
         android:translationX="1000dp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
 
         <TextView
-            android:layout_width="match_parent"
+            android:id="@+id/tvTituloHistorial"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="HISTORIAL DUELO"
-            android:textColor="#565654"
+            android:text="REGISTRO DE MOVIMIENTOS"
+            android:textColor="#B388FF"
             android:gravity="center"
-            android:textSize="12sp"
+            android:textSize="14sp"
             android:textStyle="bold"
-            android:paddingTop="16dp"
-            android:paddingBottom="16dp" />
+            android:letterSpacing="0.1"
+            android:layout_marginTop="24dp"
+            android:layout_marginHorizontal="24dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <View
+            android:id="@+id/divisorHistorial"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#26FFFFFF"
+            android:layout_marginTop="16dp"
+            android:layout_marginHorizontal="24dp"
+            app:layout_constraintTop_toBottomOf="@id/tvTituloHistorial" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvHistorialLateral"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:clipToPadding="false"
+            android:paddingTop="12dp"
+            android:paddingHorizontal="16dp"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            app:layout_constraintTop_toBottomOf="@id/divisorHistorial"
+            app:layout_constraintBottom_toTopOf="@id/btnCerrarHistorial"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCerrarHistorial"
-            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
-            android:layout_width="match_parent"
-            android:layout_height="64dp"
-            android:text="VOLVER"
-            app:backgroundTint="#565654"
-            android:textColor="#000000"
-            android:layout_marginVertical="8dp" />
-    </LinearLayout>
+            style="@style/Widget.MaterialComponents.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:text="CERRAR HISTORIAL"
+            android:textColor="#90A4AE"
+            android:textSize="10sp"
+            android:letterSpacing="0.1"
+            android:layout_marginHorizontal="24dp"
+            android:layout_marginBottom="12dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/panelDespachoDeslizable"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#E6050505"
+        android:background="#E60B132B"
         android:elevation="50dp"
         android:visibility="gone"
         android:translationX="1000dp"
@@ -503,13 +562,13 @@
             android:id="@+id/tvTituloDespacho"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="DESPACHO PEDIDO"
-            android:textColor="#FFFFFF"
+            android:text="DESPACHO DE PEDIDO"
+            android:textColor="#00E5FF"
             android:gravity="center"
             android:textSize="14sp"
             android:textStyle="bold"
             android:letterSpacing="0.1"
-            android:layout_marginTop="32dp"
+            android:layout_marginTop="20dp"
             android:layout_marginHorizontal="24dp"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -519,13 +578,12 @@
             android:id="@+id/tvSubtituloDespacho"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Toca un producto para marcar su entrega"
-            android:textColor="#80FFFFFF"
+            android:text="Verifica los productos antes de entregar"
+            android:textColor="#B0BEC5"
             android:gravity="center"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:layout_marginTop="4dp"
             android:layout_marginHorizontal="24dp"
-            android:textStyle="italic"
             app:layout_constraintTop_toBottomOf="@id/tvTituloDespacho"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
@@ -534,10 +592,16 @@
             android:id="@+id/divisorDespacho"
             android:layout_width="match_parent"
             android:layout_height="1dp"
-            android:background="#1AFFFFFF"
-            android:layout_marginTop="16dp"
+            android:background="#26FFFFFF"
+            android:layout_marginTop="12dp"
             android:layout_marginHorizontal="24dp"
             app:layout_constraintTop_toBottomOf="@id/tvSubtituloDespacho" />
+
+        <androidx.constraintlayout.widget.Group
+            android:id="@+id/grupoVistaCarrito"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:constraint_referenced_ids="rvDespachoLateral,layoutBotonesAccion" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvDespachoLateral"
@@ -545,41 +609,126 @@
             android:layout_height="0dp"
             android:clipToPadding="false"
             android:paddingTop="8dp"
-            android:paddingHorizontal="12dp"
+            android:paddingHorizontal="16dp"
+            android:scrollbars="none"
+            android:overScrollMode="never"
             app:layout_constraintTop_toBottomOf="@id/divisorDespacho"
-            app:layout_constraintBottom_toTopOf="@id/btnEntregarTodoLateral"
+            app:layout_constraintBottom_toTopOf="@id/layoutBotonesAccion"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnEntregarTodoLateral"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+        <LinearLayout
+            android:id="@+id/layoutBotonesAccion"
             android:layout_width="0dp"
-            android:layout_height="64dp"
-            android:text="ENTREGAR PRODUCTO COMPLETO"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold"
-            android:letterSpacing="0.05"
-            app:strokeColor="#FFFFFF"
-            app:strokeWidth="2dp"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
             android:layout_marginHorizontal="24dp"
             android:layout_marginBottom="8dp"
             app:layout_constraintBottom_toTopOf="@id/btnCerrarDespacho"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEditarPedido"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="6dp"
+                android:text="EDITAR"
+                android:textColor="#FFD54F"
+                android:textStyle="bold"
+                android:textSize="11sp"
+                app:strokeColor="#FFD54F"
+                app:strokeWidth="1dp"
+                app:cornerRadius="14dp"
+                app:icon="@drawable/ic_edit"
+                app:iconTint="#FFD54F" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnEntregarTodoLateral"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="1.2"
+                android:layout_marginStart="6dp"
+                android:text="ENTREGAR"
+                android:textColor="#0B132B"
+                android:textStyle="bold"
+                android:textSize="11sp"
+                app:backgroundTint="#00E676"
+                app:cornerRadius="14dp"
+                app:icon="@drawable/ic_check_circle"
+                app:iconTint="#0B132B" />
+        </LinearLayout>
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/layoutDestinoCobro"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:visibility="gone"
+            app:layout_constraintTop_toBottomOf="@id/divisorDespacho"
+            app:layout_constraintBottom_toTopOf="@id/btnCerrarDespacho"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDestinoBolsa"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:layout_marginHorizontal="32dp"
+                android:layout_marginTop="16dp"
+                android:text="A LA BOLSA DE APUESTA"
+                android:textColor="#FFD600"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                app:strokeColor="#FFD600"
+                app:strokeWidth="2dp"
+                app:cornerRadius="16dp"
+                app:icon="@drawable/ic_shopping_bag"
+                app:iconTint="#FFD600"
+                app:iconSize="24dp"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvJugadoresDestino"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="16dp"
+                android:clipToPadding="false"
+                android:paddingHorizontal="24dp"
+                android:orientation="horizontal"
+                android:scrollbars="none"
+                android:overScrollMode="never"
+                app:layout_constraintBottom_toTopOf="@id/btnCancelarDestino"
+                app:layout_constraintTop_toBottomOf="@id/btnDestinoBolsa" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCancelarDestino"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="CANCELAR Y VOLVER"
+                android:textColor="#FF5252"
+                android:textSize="10sp"
+                android:layout_marginBottom="8dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCerrarDespacho"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+            style="@style/Widget.MaterialComponents.Button.TextButton"
             android:layout_width="0dp"
-            android:layout_height="64dp"
-            android:text="VOLVER"
-            android:textColor="#B3FFFFFF"
+            android:layout_height="40dp"
+            android:text="VOLVER AL DUELO"
+            android:textColor="#90A4AE"
+            android:textSize="10sp"
             android:letterSpacing="0.1"
-            app:strokeColor="#4DFFFFFF"
-            app:strokeWidth="1dp"
             android:layout_marginHorizontal="24dp"
-            android:layout_marginBottom="24dp"
+            android:layout_marginBottom="12dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />

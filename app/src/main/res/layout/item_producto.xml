@@ -5,30 +5,32 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_margin="8dp"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="4dp"
-    app:strokeColor="#EEEEEE"
+    app:cardBackgroundColor="@android:color/transparent"
+    app:cardCornerRadius="20dp"
+    app:cardElevation="0dp"
+    app:strokeColor="#26FFFFFF"
     app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="@drawable/bg_ghost_gradient"
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="16dp"
         android:gravity="center_horizontal">
 
         <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="100dp"
-            android:background="#F8F9FA">
+            android:layout_height="80dp"
+            android:background="@android:color/transparent">
 
             <ImageView
                 android:id="@+id/ivProducto"
-                android:layout_width="60dp"
-                android:layout_height="60dp"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
                 android:layout_gravity="center"
                 android:src="@drawable/ic_inventory"
-                app:tint="#455A64" />
+                app:tint="#00E5FF" />
         </FrameLayout>
 
         <TextView
@@ -38,8 +40,8 @@
             android:layout_marginTop="8dp"
             android:gravity="center"
             android:text="Nombre Producto"
-            android:textColor="#212121"
-            android:textSize="16sp"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
             android:textStyle="bold"
             android:maxLines="2"
             android:ellipsize="end" />
@@ -48,20 +50,21 @@
             android:id="@+id/tvPrecioProducto"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="6dp"
             android:text="$ 0.00"
-            android:textColor="#2E7D32"
-            android:textSize="15sp"
+            android:textColor="#00E676"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvStock"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="4dp"
             android:text="Stock: 0"
-            android:textColor="#757575"
-            android:textSize="12sp" />
+            android:textColor="#B0BEC5"
+            android:textSize="11sp"
+            android:letterSpacing="0.05" />
 
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

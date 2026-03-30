@@ -32,6 +32,7 @@ import com.google.android.material.imageview.ShapeableImageView;
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.LogBatallaAdapter;
 import com.nodo.tpv.data.database.AppDatabase;
+import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.entities.BolaAnotada;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.Producto;
@@ -57,6 +58,8 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.transition.TransitionManager;
 
+import com.nodo.tpv.adapters.ClienteDestinoAdapter;
+
 public class FragmentArenaDuelo extends Fragment {
 
     // --- ESTADOS PARA MODO VAR (VIDEO STREAMING) ---
@@ -67,6 +70,8 @@ public class FragmentArenaDuelo extends Fragment {
 
     // URL DE LA CÁMARA (NODO CAM - Plan B)
     private String cameraUrl = "http://192.168.1.2:8080/";
+
+    private List<DetalleHistorialDuelo> listaPendientesActual = new ArrayList<>();
 
     // Vistas de Paneles Deslizables
     private View panelHistorial, panelConfig, panelDespacho;
@@ -85,6 +90,7 @@ public class FragmentArenaDuelo extends Fragment {
     private PedidoViewModel pedidoViewModel;
 
     private String tipoJuegoMesa;
+
     private int idMesaActual;
     private final String PIN_MAESTRO = "1234";
 
@@ -375,26 +381,115 @@ public class FragmentArenaDuelo extends Fragment {
 
     private void toggleDespacho(boolean mostrar) {
         if (despachoVisible == mostrar) return;
+
+        // 🔥 Referencias a los textos que van a cambiar dinámicamente
+        TextView tvTituloDespacho = requireView().findViewById(R.id.tvTituloDespacho);
+        TextView tvSubtituloDespacho = requireView().findViewById(R.id.tvSubtituloDespacho);
+
         if (mostrar) {
             com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(requireContext());
             com.nodo.tpv.data.entities.Usuario user = session.obtenerUsuario();
-
             final int idOp = (user != null) ? user.idUsuario : 0;
             final String loginOp = (user != null) ? user.login : "desconocido";
 
+            View panel = requireView();
+            androidx.constraintlayout.widget.Group grupoVistaCarrito = panel.findViewById(R.id.grupoVistaCarrito);
+            View layoutDestinoCobro = panel.findViewById(R.id.layoutDestinoCobro);
+
+            View btnEntregarTodo = panel.findViewById(R.id.btnEntregarTodoLateral);
+            View btnEditarPedido = panel.findViewById(R.id.btnEditarPedido);
+            View btnDestinoBolsa = panel.findViewById(R.id.btnDestinoBolsa);
+            View btnCancelarDestino = panel.findViewById(R.id.btnCancelarDestino);
+            RecyclerView rvJugadoresDestino = panel.findViewById(R.id.rvJugadoresDestino);
+
+            // 1. RESETEAMOS LA VISTA AL ESTADO ORIGINAL
+            if (grupoVistaCarrito != null && layoutDestinoCobro != null) {
+                grupoVistaCarrito.setVisibility(View.VISIBLE);
+                layoutDestinoCobro.setVisibility(View.GONE);
+                tvTituloDespacho.setText("DESPACHO DE PEDIDO");
+                tvSubtituloDespacho.setVisibility(View.VISIBLE);
+            }
+
+            // 2. CARGAMOS LOS PRODUCTOS PENDIENTES
             pedidoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), lista -> {
                 if (lista != null) {
+                    listaPendientesActual = lista;
                     rvDespachoLateral.setLayoutManager(new LinearLayoutManager(getContext()));
-                    rvDespachoLateral.setAdapter(new LogBatallaAdapter(lista, item -> {
-                        pedidoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
-
-                        // 🔥 SOLUCIÓN CAMBIO 2: Sincronizar inmediatamente bolsa al despachar 1 por 1
-                        arenaViewModel.recuperarDueloActivo(idMesaActual);
-                    }));
+                    rvDespachoLateral.setAdapter(new LogBatallaAdapter(lista, item -> {}));
                     if (lista.isEmpty() && despachoVisible) toggleDespacho(false);
                 }
             });
+
+            // 3. CARGAMOS LOS CLIENTES EN EL CARRUSEL
+            List<Cliente> clientesMesa = arenaViewModel.getTodosLosParticipantesDuelo();
+            if (clientesMesa != null && !clientesMesa.isEmpty() && rvJugadoresDestino != null) {
+                rvJugadoresDestino.setLayoutManager(new LinearLayoutManager(getContext(), LinearLayoutManager.HORIZONTAL, false));
+
+                rvJugadoresDestino.setAdapter(new ClienteDestinoAdapter(clientesMesa, clienteSeleccionado -> {
+                    // 🔥 ¡MAGIA! COBRAMOS DIRECTO AL CLIENTE
+                    if (listaPendientesActual != null && !listaPendientesActual.isEmpty()) {
+                        for (DetalleHistorialDuelo item : listaPendientesActual) {
+                            // Le decimos al ViewModel que saque este producto de la apuesta
+                            pedidoViewModel.marcarComoEntregadoACliente(item.idDetalle, clienteSeleccionado.idCliente, idOp, loginOp);
+                        }
+
+                        Toast.makeText(requireContext(), "Cargado a " + clienteSeleccionado.alias + " ✅", Toast.LENGTH_SHORT).show();
+                        // Refrescamos toda la arena (esto actualizará el saldo de la burbuja del jugador)
+                        arenaViewModel.recuperarDueloActivo(idMesaActual);
+                        toggleDespacho(false);
+                    }
+                }));
+            }
+
+            // 4. AL PRESIONAR ENTREGAR: CAMBIAMOS EL TÍTULO Y LA VISTA
+            if (btnEntregarTodo != null) {
+                btnEntregarTodo.setOnClickListener(v -> {
+                    if (listaPendientesActual != null && !listaPendientesActual.isEmpty()) {
+                        grupoVistaCarrito.setVisibility(View.GONE);
+                        layoutDestinoCobro.setVisibility(View.VISIBLE);
+
+                        // Mutación del título para ahorrar espacio
+                        tvTituloDespacho.setText("SELECCIONA EL DESTINO");
+                        tvSubtituloDespacho.setVisibility(View.GONE);
+                    } else {
+                        Toast.makeText(requireContext(), "No hay productos", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            }
+
+            // 5. AL CANCELAR: VOLVEMOS EL TÍTULO A LA NORMALIDAD
+            if (btnCancelarDestino != null) {
+                btnCancelarDestino.setOnClickListener(v -> {
+                    layoutDestinoCobro.setVisibility(View.GONE);
+                    grupoVistaCarrito.setVisibility(View.VISIBLE);
+                    tvTituloDespacho.setText("DESPACHO DE PEDIDO");
+                    tvSubtituloDespacho.setVisibility(View.VISIBLE);
+                });
+            }
+
+            // 6. AL COBRAR A LA BOLSA CENTRAL (Todo normal)
+            if (btnDestinoBolsa != null) {
+                btnDestinoBolsa.setOnClickListener(v -> {
+                    if (listaPendientesActual != null && !listaPendientesActual.isEmpty()) {
+                        for (DetalleHistorialDuelo item : listaPendientesActual) {
+                            pedidoViewModel.marcarComoEntregado(item.idDetalle, idOp, loginOp);
+                        }
+                        Toast.makeText(requireContext(), "Cargado a la Apuesta ✅", Toast.LENGTH_SHORT).show();
+                        arenaViewModel.recuperarDueloActivo(idMesaActual);
+                        toggleDespacho(false);
+                    }
+                });
+            }
+
+            // 7. BOTÓN EDITAR
+            if (btnEditarPedido != null) {
+                btnEditarPedido.setOnClickListener(v -> {
+                    toggleDespacho(false);
+                    abrirCatalogo();
+                });
+            }
         }
+
         animarCapaLateral(panelDespacho, mostrar);
         despachoVisible = mostrar;
     }
@@ -618,6 +713,7 @@ public class FragmentArenaDuelo extends Fragment {
         containerGuerrerosDinamicos.removeAllViews();
         containerMarcadoresDinamicos.removeAllViews();
         Map<Integer, List<Integer>> equipos = new HashMap<>();
+
         for (Map.Entry<Integer, Integer> entry : mapa.entrySet()) {
             if (!equipos.containsKey(entry.getValue())) equipos.put(entry.getValue(), new ArrayList<>());
             equipos.get(entry.getValue()).add(entry.getKey());
@@ -630,16 +726,53 @@ public class FragmentArenaDuelo extends Fragment {
             ((TextView) vMarcador.findViewById(R.id.tvLabelEquipoDinamico)).setText(getNombreColor(color));
 
             LinearLayout containerMalas = vMarcador.findViewById(R.id.containerMalasVisual);
-            FlexboxLayout containerBolas = vMarcador.findViewById(R.id.containerBolasIngresadas);
+
+            // 🔥 Ahora es un LinearLayout para que funcione el Scroll Horizontal
+            LinearLayout containerBolas = vMarcador.findViewById(R.id.containerBolasIngresadas);
             View layoutInventarioBolas = vMarcador.findViewById(R.id.layoutInventarioBolas);
 
             if (layoutInventarioBolas != null) {
                 layoutInventarioBolas.setVisibility(View.VISIBLE);
             }
 
+            // --- VINCULACIÓN ZONA DE SALDOS ---
+            TextView tvSaldoApuesta = vMarcador.findViewById(R.id.tvSaldoEquipo);
+            TextView tvSaldoExtra = vMarcador.findViewById(R.id.tvSaldoExtra);
+
+            arenaViewModel.getListaApuestaEntregada().observe(getViewLifecycleOwner(), productos -> {
+                BigDecimal totalApuesta = BigDecimal.ZERO;
+                if (productos != null) {
+                    for (Producto p : productos) {
+                        totalApuesta = totalApuesta.add(p.precioProducto);
+                    }
+                }
+                if (tvSaldoApuesta != null) {
+                    tvSaldoApuesta.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(totalApuesta));
+                }
+            });
+
+            if (equipos.containsKey(color)) {
+                List<Integer> integrantesEquipo = equipos.get(color);
+                final Map<Integer, BigDecimal> saldosIndividuales = new HashMap<>();
+
+                for (Integer idJugador : integrantesEquipo) {
+                    arenaViewModel.obtenerSaldoIndividualDuelo(idJugador).observe(getViewLifecycleOwner(), saldo -> {
+                        saldosIndividuales.put(idJugador, saldo != null ? saldo : BigDecimal.ZERO);
+
+                        BigDecimal totalExtraEquipo = BigDecimal.ZERO;
+                        for (BigDecimal s : saldosIndividuales.values()) {
+                            totalExtraEquipo = totalExtraEquipo.add(s);
+                        }
+
+                        if (tvSaldoExtra != null) {
+                            tvSaldoExtra.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(totalExtraEquipo));
+                        }
+                    });
+                }
+            }
+
             View btnFalta = vMarcador.findViewById(R.id.btnFalta);
             if (btnFalta != null) {
-                // 🔥 SOLUCIÓN CAMBIO 1: Botón Falta sin bloqueo
                 btnFalta.setOnClickListener(v -> {
                     requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                     abrirPanelSeleccionMalas(color, containerMalas);
@@ -648,7 +781,6 @@ public class FragmentArenaDuelo extends Fragment {
 
             View btnAnotarBola = vMarcador.findViewById(R.id.btnAnotarBola);
             if (btnAnotarBola != null) {
-                // 🔥 SOLUCIÓN CAMBIO 1: Botón Bola sin bloqueo
                 btnAnotarBola.setOnClickListener(v -> {
                     abrirPanelSeleccionBolas(color);
                 });
@@ -668,6 +800,7 @@ public class FragmentArenaDuelo extends Fragment {
                                     if (bola.colorEquipo == color) {
 
                                         if (bola.numeroBola < 0) {
+                                            // Solo guardamos en la lista, YA NO DIBUJAMOS LA BOLA ROJA
                                             listaMalasGuardadas.add(bola.numeroBola);
                                         } else {
                                             sumaPuntosPositivos += bola.numeroBola;
@@ -722,9 +855,10 @@ public class FragmentArenaDuelo extends Fragment {
                                 TextView tvMalasValor = vMarcador.findViewById(R.id.tvMalasValor);
                                 TextView tvScoreDinamico = vMarcador.findViewById(R.id.tvScoreDinamico);
 
+                                // Actualizamos solo el texto de malas (ya quitamos el método "actualizarVistaMalas" que dibujaba bolas)
                                 if (tvMalasValor != null) {
                                     tvMalasValor.setText(String.valueOf(listaMalasGuardadas.size()));
-                                    tvMalasValor.setTag(listaMalasGuardadas);
+                                    tvMalasValor.setTag(listaMalasGuardadas); // Esto es clave para que no falle al restar malas
                                 }
 
                                 if (tvScoreDinamico != null) {
@@ -743,7 +877,6 @@ public class FragmentArenaDuelo extends Fragment {
                         });
             }
 
-            // 🔥 SOLUCIÓN CAMBIO 1: Marcador sin bloqueo por despachos
             vMarcador.setOnLongClickListener(v -> {
                 requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
 
@@ -914,18 +1047,8 @@ public class FragmentArenaDuelo extends Fragment {
 
             int colorEquipo = ((MaterialCardView) marcadorTeam).getStrokeColor();
 
-            LinearLayout contenedorMalas = marcadorTeam.findViewById(R.id.containerMalasVisual);
-            if (contenedorMalas != null) {
-                List<View> vistasMalas = new ArrayList<>();
-                for (int j = 0; j < contenedorMalas.getChildCount(); j++) vistasMalas.add(contenedorMalas.getChildAt(j));
-
-                for (View v : vistasMalas) {
-                    estallarUnaVistaConParticulas(v, colorEquipo);
-                    hayAnimacion = true;
-                }
-            }
-
-            FlexboxLayout contenedorBolas = marcadorTeam.findViewById(R.id.containerBolasIngresadas);
+            // 🔥 CORRECCIÓN: Ahora es LinearLayout para poder hacer scroll horizontal
+            LinearLayout contenedorBolas = marcadorTeam.findViewById(R.id.containerBolasIngresadas);
             if (contenedorBolas != null) {
                 List<View> vistasBolas = new ArrayList<>();
                 for (int j = 0; j < contenedorBolas.getChildCount(); j++) vistasBolas.add(contenedorBolas.getChildAt(j));
@@ -1092,8 +1215,12 @@ public class FragmentArenaDuelo extends Fragment {
                 int color = (int) vMarcador.getTag();
                 TextView tvMalas = vMarcador.findViewById(R.id.tvMalasValor);
 
-                List<Integer> malas = (List<Integer>) tvMalas.getTag();
-                if (malas == null) malas = new ArrayList<>();
+                // 🔥 SOLUCIÓN AL CRASH: Blindaje contra nulos
+                List<Integer> malas = new ArrayList<>();
+                if (tvMalas != null && tvMalas.getTag() != null) {
+                    malas = (List<Integer>) tvMalas.getTag();
+                }
+
                 malasPorJugador.put(color, new ArrayList<>(malas));
 
                 for (int m : malas) {

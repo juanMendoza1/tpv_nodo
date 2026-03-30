@@ -234,4 +234,17 @@ public class PedidoViewModel extends AndroidViewModel {
     public LiveData<List<DetalleHistorialDuelo>> obtenerDeudaPorMesaInd(int idMesa) {
         return db.detallePedidoDao().obtenerDeudaPorMesaInd(idMesa);
     }
+
+
+    public void marcarComoEntregadoACliente(int idDetalle, int idCliente, int idUsuario, String loginOp) {
+        executorService.execute(() -> {
+            // Aquí le decimos a la BD:
+            // 1. Estado = ENTREGADO
+            // 2. idCliente = el cliente que seleccionamos en el círculo holográfico
+            // 3. esApuesta = 0 (false) -> ¡Esto saca el producto de la bolsa central!
+            // 4. idUsuarioEntrega = el mesero que hizo la acción
+            db.detallePedidoDao().despacharPedidoAClienteEspecifico(idDetalle, idCliente, idUsuario);
+        });
+    }
+
 }

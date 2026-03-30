@@ -1,7 +1,10 @@
 package com.nodo.tpv.ui.fragments;
 
 import android.app.AlertDialog;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.transition.TransitionManager;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -20,6 +23,7 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.android.material.textfield.TextInputEditText;
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.ProductoAdapter;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
@@ -37,16 +41,26 @@ public class CatalogoProductosFragment extends Fragment {
     private ProductoViewModel productoViewModel;
     private PedidoViewModel pedidoViewModel;
     private int idClienteSeleccionado;
+    private int idMesaActual;
 
-    private Button btnFinalizarSeleccion;
+    // Vistas principales
+    private TextInputEditText etBuscarProducto;
+    private ProductoAdapter productoAdapter;
+    private List<Producto> listaProductosCompleta = new ArrayList<>();
+
+    // Vistas del Carrito / Resumen
     private View cardResumenContable;
     private TextView tvTotalResumen;
     private ResumenContableAdapter resumenAdapter;
-
-    private LinearLayout layoutDetalleColapsable;
+    private View layoutDetalleColapsable;
     private ImageView btnMinimizarResumen;
+    private Button btnFinalizarSeleccion;
     private boolean estaMinimizado = true;
-    private int idMesaActual;
+
+    private RecyclerView rvProductos;
+
+    // Carrito temporal (Para cuando le cobramos a un cliente individual)
+    private List<ItemCarritoLocal> carritoClienteLocal = new ArrayList<>();
 
     public static CatalogoProductosFragment newInstance(int idCliente, int idMesa) {
         CatalogoProductosFragment fragment = new CatalogoProductosFragment();
@@ -66,7 +80,6 @@ public class CatalogoProductosFragment extends Fragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        // Instanciamos ambos ViewModels
         productoViewModel = new ViewModelProvider(requireActivity()).get(ProductoViewModel.class);
         pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
 
@@ -76,6 +89,7 @@ public class CatalogoProductosFragment extends Fragment {
         }
 
         // --- 1. VINCULACIÓN DE VISTAS ---
+        etBuscarProducto = view.findViewById(R.id.etBuscarProducto);
         btnFinalizarSeleccion = view.findViewById(R.id.btnFinalizarSeleccion);
         cardResumenContable = view.findViewById(R.id.cardResumenContable);
         tvTotalResumen = view.findViewById(R.id.tvTotalResumen);
@@ -83,89 +97,193 @@ public class CatalogoProductosFragment extends Fragment {
         btnMinimizarResumen = view.findViewById(R.id.btnMinimizarResumen);
         RecyclerView rvResumen = view.findViewById(R.id.rvResumenApuesta);
 
-        // --- 2. CONFIGURAR RESUMEN (Lógica reactiva a la DB) ---
+        // Lógica de colapsar
+        btnMinimizarResumen.setOnClickListener(v -> {
+            estaMinimizado = !estaMinimizado;
+            TransitionManager.beginDelayedTransition((ViewGroup) view);
+
+            if (estaMinimizado) {
+                layoutDetalleColapsable.setVisibility(View.GONE);
+                btnFinalizarSeleccion.setVisibility(View.GONE);
+                btnMinimizarResumen.setRotation(0);
+
+                // 🔥 El panel se cerró, mostramos los productos de nuevo
+                mostrarGrillaProductosAnimada();
+            } else {
+                layoutDetalleColapsable.setVisibility(View.VISIBLE);
+                btnFinalizarSeleccion.setVisibility(View.VISIBLE);
+                btnMinimizarResumen.setRotation(180);
+
+                // 🔥 El panel se abrió, ocultamos los productos para no hacer ruido visual
+                ocultarGrillaProductosAnimada();
+            }
+        });
+
+        // --- 2. CONFIGURAR BUSCADOR EN TIEMPO REAL ---
+        etBuscarProducto.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override
+            public void afterTextChanged(Editable s) {
+                filtrarProductos(s.toString());
+            }
+        });
+
+        // --- 3. CONFIGURAR CATÁLOGO PRINCIPAL ---
+        rvProductos = view.findViewById(R.id.rvProductos);
+        rvProductos.setLayoutManager(new GridLayoutManager(getContext(), 3));
+        productoAdapter = new ProductoAdapter();
+        rvProductos.setAdapter(productoAdapter);
+        productoAdapter.setOnProductoClickListener(this::mostrarDialogoCantidad);
+
+        productoViewModel.getProductosLiveData().observe(getViewLifecycleOwner(), lista -> {
+            if (lista != null) {
+                listaProductosCompleta = lista;
+                productoAdapter.setProductos(lista);
+            }
+        });
+
+        // --- 4. CONFIGURAR CARRITO / RESUMEN ---
         rvResumen.setLayoutManager(new LinearLayoutManager(getContext()));
-        resumenAdapter = new ResumenContableAdapter(productoItem -> {
-            pedidoViewModel.eliminarDetallePendiente(productoItem.idProducto);
-            Toast.makeText(getContext(), "Producto quitado", Toast.LENGTH_SHORT).show();
+        resumenAdapter = new ResumenContableAdapter(itemVisual -> {
+            if (idClienteSeleccionado == 0) {
+                DetalleHistorialDuelo d = (DetalleHistorialDuelo) itemVisual.rawObject;
+                pedidoViewModel.eliminarDetallePendiente(d.idDetalle);
+            } else {
+                ItemCarritoLocal i = (ItemCarritoLocal) itemVisual.rawObject;
+                carritoClienteLocal.remove(i);
+                actualizarCarritoLocalUI();
+            }
+            Toast.makeText(getContext(), "Ítem retirado", Toast.LENGTH_SHORT).show();
         });
         rvResumen.setAdapter(resumenAdapter);
 
-        // --- 3. LÓGICA COLAPSABLE ---
-        btnMinimizarResumen.setOnClickListener(v -> toggleResumen((ViewGroup) view));
-
-        // --- 4. OBSERVADOR DE PENDIENTES (BADGE DE BOLSA) ---
+        // --- 5. OBSERVADORES DEL CARRITO ---
         if (idClienteSeleccionado == 0) {
             pedidoViewModel.obtenerSoloPendientesMesa(idMesaActual).observe(getViewLifecycleOwner(), listaPendientes -> {
                 if (listaPendientes != null && !listaPendientes.isEmpty()) {
-                    cardResumenContable.setVisibility(View.VISIBLE);
-                    List<Producto> visuales = new ArrayList<>();
+                    mostrarPanelCarrito();
+                    List<ItemCarritoVisual> visuales = new ArrayList<>();
                     BigDecimal totalSuma = BigDecimal.ZERO;
 
                     for (DetalleHistorialDuelo d : listaPendientes) {
-                        Producto p = new Producto();
-                        p.idProducto = d.idDetalle;
-
-                        // CORRECCIÓN: Acceso directo a las propiedades en lugar de set()
-                        p.nombreProducto = d.nombreProducto;
-                        p.precioProducto = d.precioEnVenta;
-
-                        visuales.add(p);
+                        ItemCarritoVisual v = new ItemCarritoVisual();
+                        v.textoAmostrar = d.nombreProducto;
+                        v.precioAmostrar = d.precioEnVenta;
+                        v.rawObject = d;
+                        visuales.add(v);
                         totalSuma = totalSuma.add(d.precioEnVenta);
                     }
                     resumenAdapter.updateList(visuales);
                     tvTotalResumen.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(totalSuma));
                 } else {
-                    cardResumenContable.setVisibility(View.GONE);
+                    ocultarPanelCarrito();
                 }
             });
+        } else {
+            actualizarCarritoLocalUI();
         }
 
-        // --- 5. BOTÓN LIMPIAR BOLSA ---
+        // --- 6. BOTONES DE ACCIÓN DEL CARRITO ---
         view.findViewById(R.id.btnLimpiarApuesta).setOnClickListener(v -> {
-            pedidoViewModel.cancelarMunicionPendienteMesa(idMesaActual);
-            Toast.makeText(getContext(), "Bolsa vaciada", Toast.LENGTH_SHORT).show();
+            if (idClienteSeleccionado == 0) {
+                pedidoViewModel.cancelarMunicionPendienteMesa(idMesaActual);
+            } else {
+                carritoClienteLocal.clear();
+                actualizarCarritoLocalUI();
+            }
+            Toast.makeText(getContext(), "Carrito vaciado", Toast.LENGTH_SHORT).show();
         });
 
-        // --- 6. BOTÓN FINALIZAR ---
         btnFinalizarSeleccion.setOnClickListener(v -> {
-            requireActivity().getSupportFragmentManager().popBackStack();
-        });
-
-        // --- 7. CONFIGURACIÓN DEL CATÁLOGO PRINCIPAL (FLUJO REACTIVO) ---
-        RecyclerView rvProductos = view.findViewById(R.id.rvProductos);
-        rvProductos.setLayoutManager(new GridLayoutManager(getContext(), 3));
-        ProductoAdapter adapter = new ProductoAdapter();
-        rvProductos.setAdapter(adapter);
-        adapter.setOnProductoClickListener(this::mostrarDialogoCantidad);
-
-        productoViewModel.getProductosLiveData().observe(getViewLifecycleOwner(), lista -> {
-            if (lista != null) {
-                adapter.setProductos(lista);
+            if (idClienteSeleccionado == 0) {
+                requireActivity().getSupportFragmentManager().popBackStack();
+            } else {
+                if (!carritoClienteLocal.isEmpty()) {
+                    for (ItemCarritoLocal item : carritoClienteLocal) {
+                        pedidoViewModel.insertarConsumoDirectoEntregado(idClienteSeleccionado, item.producto, item.cantidad);
+                    }
+                    Toast.makeText(getContext(), "Productos cargados al cliente \u2705", Toast.LENGTH_SHORT).show();
+                    requireActivity().getSupportFragmentManager().popBackStack();
+                } else {
+                    requireActivity().getSupportFragmentManager().popBackStack();
+                }
             }
         });
 
-        // --- 8. SINCRONIZACIÓN HÍBRIDA ---
+        // --- 7. SINCRONIZACIÓN ---
         com.nodo.tpv.util.SessionManager sessionManager = new com.nodo.tpv.util.SessionManager(requireContext());
         long empresaId = sessionManager.getEmpresaId();
-
         if (empresaId > 0) {
             productoViewModel.refrescarStockSilencioso(empresaId);
         }
     }
 
-    private void toggleResumen(ViewGroup root) {
-        estaMinimizado = !estaMinimizado;
-        TransitionManager.beginDelayedTransition(root);
-        if (estaMinimizado) {
-            layoutDetalleColapsable.setVisibility(View.GONE);
-            btnMinimizarResumen.setRotation(0);
+    // --- MÉTODOS DE BÚSQUEDA Y UI ---
+    private void filtrarProductos(String query) {
+        if (query.isEmpty()) {
+            productoAdapter.setProductos(listaProductosCompleta);
         } else {
-            layoutDetalleColapsable.setVisibility(View.VISIBLE);
-            btnMinimizarResumen.setRotation(180);
+            List<Producto> filtrada = new ArrayList<>();
+            for (Producto p : listaProductosCompleta) {
+                if (p.nombreProducto.toLowerCase().contains(query.toLowerCase())) {
+                    filtrada.add(p);
+                }
+            }
+            productoAdapter.setProductos(filtrada);
         }
     }
 
+    private void mostrarPanelCarrito() {
+        if (cardResumenContable.getVisibility() == View.GONE) {
+            cardResumenContable.setVisibility(View.VISIBLE);
+            cardResumenContable.setAlpha(0f);
+            cardResumenContable.animate().alpha(1f).setDuration(300).start();
+        }
+    }
+
+    private void ocultarPanelCarrito() {
+        if (cardResumenContable.getVisibility() == View.VISIBLE) {
+            cardResumenContable.animate().alpha(0f).setDuration(300)
+                    .withEndAction(() -> {
+                        cardResumenContable.setVisibility(View.GONE);
+                        // Reseteamos el estado del panel por si lo vuelven a abrir
+                        estaMinimizado = true;
+                        layoutDetalleColapsable.setVisibility(View.GONE);
+                        btnFinalizarSeleccion.setVisibility(View.GONE);
+                        btnMinimizarResumen.setRotation(0);
+                    }).start();
+        }
+        // 🔥 Si el carrito se oculta (ej. al limpiarlo), los productos SIEMPRE deben volver a verse
+        mostrarGrillaProductosAnimada();
+    }
+
+    // --- MAGIA VISUAL: OCULTAR/MOSTRAR PRODUCTOS ---
+    private void ocultarGrillaProductosAnimada() {
+        if (rvProductos != null && rvProductos.getVisibility() == View.VISIBLE) {
+            rvProductos.animate()
+                    .alpha(0f)
+                    .scaleX(0.92f) // Efecto zoom hacia atrás
+                    .scaleY(0.92f)
+                    .setDuration(250)
+                    .withEndAction(() -> rvProductos.setVisibility(View.INVISIBLE))
+                    .start();
+        }
+    }
+
+    private void mostrarGrillaProductosAnimada() {
+        if (rvProductos != null && (rvProductos.getVisibility() == View.INVISIBLE || rvProductos.getVisibility() == View.GONE)) {
+            rvProductos.setVisibility(View.VISIBLE);
+            rvProductos.animate()
+                    .alpha(1f)
+                    .scaleX(1f) // Vuelve a su tamaño normal
+                    .scaleY(1f)
+                    .setDuration(250)
+                    .start();
+        }
+    }
+
+    // --- LÓGICA DE AGREGAR PRODUCTO ---
     private void mostrarDialogoCantidad(Producto producto) {
         AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
         View dialogView = getLayoutInflater().inflate(R.layout.dialog_cantidad_producto, null);
@@ -175,7 +293,6 @@ public class CatalogoProductosFragment extends Fragment {
         Button btnMenos = dialogView.findViewById(R.id.btnMenos);
         Button btnConfirmar = dialogView.findViewById(R.id.btnConfirmarAgregar);
 
-        // CORRECCIÓN: Acceso directo a las variables de nombre y precio
         ((TextView)dialogView.findViewById(R.id.tvNombreConfirmar)).setText(producto.nombreProducto);
         ((TextView)dialogView.findViewById(R.id.tvPrecioConfirmar)).setText(
                 NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(producto.precioProducto)
@@ -200,28 +317,61 @@ public class CatalogoProductosFragment extends Fragment {
         btnConfirmar.setOnClickListener(v -> {
             if (idClienteSeleccionado == 0) {
                 pedidoViewModel.insertarMunicionDueloPendiente(idMesaActual, producto, contadorLocal[0]);
-                Toast.makeText(getContext(), "Pedido enviado al Badge \u23F3", Toast.LENGTH_SHORT).show();
-                dialog.dismiss();
+                Toast.makeText(getContext(), "Enviado al carrito (Bolsa)", Toast.LENGTH_SHORT).show();
             } else {
-                pedidoViewModel.insertarConsumoDirectoEntregado(idClienteSeleccionado, producto, contadorLocal[0]);
-                Toast.makeText(getContext(), "Producto cargado \u2705", Toast.LENGTH_SHORT).show();
-                dialog.dismiss();
-                requireActivity().getSupportFragmentManager().popBackStack();
+                carritoClienteLocal.add(new ItemCarritoLocal(producto, contadorLocal[0]));
+                actualizarCarritoLocalUI();
+                Toast.makeText(getContext(), "Agregado al carrito", Toast.LENGTH_SHORT).show();
             }
+            dialog.dismiss();
         });
         dialog.show();
     }
 
-    // Adaptador Interno
+    // --- LÓGICA CARRITO LOCAL ---
+    private void actualizarCarritoLocalUI() {
+        if (carritoClienteLocal.isEmpty()) {
+            ocultarPanelCarrito();
+        } else {
+            mostrarPanelCarrito();
+            List<ItemCarritoVisual> visuales = new ArrayList<>();
+            BigDecimal totalSuma = BigDecimal.ZERO;
+
+            for (ItemCarritoLocal item : carritoClienteLocal) {
+                ItemCarritoVisual v = new ItemCarritoVisual();
+                v.textoAmostrar = item.cantidad + "× " + item.producto.nombreProducto;
+                v.precioAmostrar = item.producto.precioProducto.multiply(new BigDecimal(item.cantidad));
+                v.rawObject = item;
+                visuales.add(v);
+                totalSuma = totalSuma.add(v.precioAmostrar);
+            }
+            resumenAdapter.updateList(visuales);
+            tvTotalResumen.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(totalSuma));
+        }
+    }
+
+    // --- CLASES INTERNAS Y ADAPTADORES ---
+    private static class ItemCarritoLocal {
+        Producto producto;
+        int cantidad;
+        ItemCarritoLocal(Producto p, int c) { this.producto = p; this.cantidad = c; }
+    }
+
+    private static class ItemCarritoVisual {
+        String textoAmostrar;
+        BigDecimal precioAmostrar;
+        Object rawObject;
+    }
+
     private static class ResumenContableAdapter extends RecyclerView.Adapter<ResumenContableAdapter.ViewHolder> {
-        private List<Producto> items = new ArrayList<>();
+        private List<ItemCarritoVisual> items = new ArrayList<>();
         private final OnItemDeleteListener listener;
 
-        public interface OnItemDeleteListener { void onDelete(Producto p); }
+        public interface OnItemDeleteListener { void onDelete(ItemCarritoVisual item); }
 
         public ResumenContableAdapter(OnItemDeleteListener listener) { this.listener = listener; }
 
-        public void updateList(List<Producto> newList) {
+        public void updateList(List<ItemCarritoVisual> newList) {
             this.items = newList;
             notifyDataSetChanged();
         }
@@ -235,13 +385,16 @@ public class CatalogoProductosFragment extends Fragment {
 
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-            Producto p = items.get(position);
+            ItemCarritoVisual item = items.get(position);
 
-            // CORRECCIÓN: Acceso directo a p.nombreProducto y p.precioProducto
-            holder.tvNombre.setText(p.nombreProducto);
-            holder.tvPrecio.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(p.precioProducto));
+            holder.tvNombre.setText(item.textoAmostrar);
+            holder.tvPrecio.setText(NumberFormat.getCurrencyInstance(new Locale("es", "CO")).format(item.precioAmostrar));
 
-            holder.btnDelete.setOnClickListener(v -> listener.onDelete(p));
+            holder.tvNombre.setTextColor(Color.parseColor("#E0E0E0"));
+            holder.tvPrecio.setTextColor(Color.parseColor("#00E676"));
+            holder.btnDelete.setColorFilter(Color.parseColor("#FF5252"));
+
+            holder.btnDelete.setOnClickListener(v -> listener.onDelete(item));
         }
 
         @Override

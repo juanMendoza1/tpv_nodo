@@ -90,6 +90,8 @@ public class ArenaViewModel extends AndroidViewModel {
     public LiveData<Boolean> getEnModoDuelo() { return enModoDuelo; }
     public LiveData<Long> getTiempoInicioDuelo() { return tiempoInicioDuelo; }
     public String getUuidDueloActual() { return uuidDueloActual; }
+
+    public List<Cliente> getTodosLosParticipantesDuelo() { return todosLosParticipantesDuelo; }
     public void setTipoJuego(String tipo) { tipoJuegoActual.postValue(tipo); }
 
     // =========================================================================================
