@@ -625,6 +625,9 @@ public class FragmentArenaDuelo extends Fragment {
             Toast.makeText(getContext(), "GANADOR: " + getNombreColor(colorEquipoTocado) + " 🏆", Toast.LENGTH_SHORT).show();
         }
 
+        // 🔥 LA MAGIA AQUÍ: Ejecutamos el cruce de malas para los que quedan vivos
+        cruzarMalasSobrevivientes();
+
         if (equiposSalvadosEnRonda.size() == totalEquipos - 1) {
             int colorPerdedorFinal = -1;
             for (Integer c : coloresUnicos) {
@@ -1503,6 +1506,82 @@ public class FragmentArenaDuelo extends Fragment {
                 }
             }
         }
+    }
+
+    private void cruzarMalasSobrevivientes() {
+        String uuidActual = arenaViewModel.getUuidDueloActual();
+        if (uuidActual == null) return;
+
+        Map<Integer, Integer> mapa = arenaViewModel.getMapaColoresDuelo().getValue();
+        if (mapa == null) return;
+
+        // 1. Identificar colores sobrevivientes (los que NO han deslizado)
+        java.util.Set<Integer> coloresSobrevivientes = new java.util.HashSet<>();
+        for (Integer c : mapa.values()) {
+            if (!equiposSalvadosEnRonda.contains(c)) {
+                coloresSobrevivientes.add(c);
+            }
+        }
+
+        // Si queda 1 o menos, no hay con quién cruzar
+        if (coloresSobrevivientes.size() < 2) return;
+
+        // 2. Recopilar las malas de la UI para los sobrevivientes
+        Map<Integer, List<Integer>> malasPorSobreviviente = new HashMap<>();
+        int minMalas = Integer.MAX_VALUE;
+
+        if (containerMarcadoresDinamicos == null) return;
+
+        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
+            View vMarcador = containerMarcadoresDinamicos.getChildAt(i);
+            if (vMarcador.getTag() instanceof Integer) {
+                int color = (int) vMarcador.getTag();
+                if (coloresSobrevivientes.contains(color)) {
+                    TextView tvMalas = vMarcador.findViewById(R.id.tvMalasValor);
+                    List<Integer> malas = new ArrayList<>();
+
+                    // Recuperamos la lista de malas ocultas en el Tag
+                    if (tvMalas != null && tvMalas.getTag() != null) {
+                        malas = (List<Integer>) tvMalas.getTag();
+                    }
+                    malasPorSobreviviente.put(color, new ArrayList<>(malas));
+
+                    if (malas.size() < minMalas) {
+                        minMalas = malas.size();
+                    }
+                }
+            }
+        }
+
+        // 3. Si alguien tiene 0 malas, no hay cruce. (minMalas = 0)
+        if (minMalas == 0 || minMalas == Integer.MAX_VALUE) return;
+
+        // 4. Si minMalas > 0, todos los sobrevivientes tienen malas. Procedemos al borrado.
+        final int malasABorrar = minMalas;
+        List<Runnable> dbOperations = new ArrayList<>();
+
+        for (Map.Entry<Integer, List<Integer>> entry : malasPorSobreviviente.entrySet()) {
+            List<Integer> malasEquipo = entry.getValue();
+            for (int k = 0; k < malasABorrar; k++) {
+                // Removemos la última mala de la lista de cada jugador
+                int idParaBorrar = malasEquipo.remove(malasEquipo.size() - 1);
+                dbOperations.add(() -> {
+                    AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, idParaBorrar);
+                });
+            }
+        }
+
+        // 5. Ejecutar borrado en la base de datos de fondo
+        new Thread(() -> {
+            for (Runnable op : dbOperations) {
+                op.run();
+            }
+
+            // Opcional: Mostramos el mensaje de cruce automático
+            requireActivity().runOnUiThread(() -> {
+                Toast.makeText(getContext(), "⚔️ Cruce automático: -" + malasABorrar + " malas", Toast.LENGTH_SHORT).show();
+            });
+        }).start();
     }
 
 }
