@@ -112,12 +112,6 @@ public interface DetallePedidoDao {
             "INNER JOIN producto AS prod ON det.idProducto = prod.idProducto " +
             "WHERE det.idCliente = :clienteId")
     List<DetalleConNombre> obtenerDetalleConNombresSincrono(int clienteId);
-
-    // En DetallePedidoDao.java
-    /*@Query("SELECT SUM(precioEnVenta) FROM detalle_pedido " +
-            "WHERE idCliente = :idC AND idDueloOrigen = :uuid AND estado = 'ENTREGADO'")
-    BigDecimal obtenerTotalClienteEnDuelo(int idC, String uuid);*/
-
     @Query("UPDATE detalle_pedido SET estado = 'ENTREGADO', idUsuarioEntrega = :idAdmin " +
             "WHERE idMesa = :idMesa AND estado = 'PENDIENTE'")
     void marcarTodoComoEntregadoMesa(int idMesa, int idAdmin);
@@ -151,9 +145,15 @@ public interface DetallePedidoDao {
     @Query("UPDATE detalle_pedido SET estado = 'CANCELADO' WHERE idMesa = :idMesa AND estado = 'PENDIENTE'")
     void cancelarTodosLosPendientesMesa(int idMesa);
 
-    @Query("SELECT SUM(precioEnVenta) FROM detalle_pedido " +
+    // 1. PARA LA BURBUJA (Total: Extras + Deudas por perder)
+    @Query("SELECT SUM(precioEnVenta * cantidad) FROM detalle_pedido " +
             "WHERE idCliente = :idC AND idDueloOrigen = :uuid AND estado = 'REGISTRADO'")
     BigDecimal obtenerTotalClienteEnDuelo(int idC, String uuid);
+
+    // 2. PARA LA ETIQUETA 'EXTRA' DEL EQUIPO (Solo consumos personales)
+    @Query("SELECT SUM(precioEnVenta * cantidad) FROM detalle_pedido " +
+            "WHERE idCliente = :idC AND idDueloOrigen = :uuid AND estado = 'REGISTRADO' AND esApuesta = 0")
+    BigDecimal obtenerTotalExtraClienteEnDuelo(int idC, String uuid);
 
     // 2. Obtener lo que está en la bolsa (idCliente = 0 y ENTREGADO)
     @Query("SELECT * FROM detalle_pedido WHERE idDueloOrigen = :uuid AND estado = 'ENTREGADO' AND idCliente = 0")
@@ -228,7 +228,7 @@ public interface DetallePedidoDao {
     @Query("UPDATE detalle_pedido SET sincronizado = -1 WHERE idDetalle = :idDetalle")
     void marcarComoErrorCritico(int idDetalle);
 
-    @Query("UPDATE detalle_pedido SET estado = 'ENTREGADO', idCliente = :idCliente, esApuesta = 0, idUsuarioEntrega = :idUsuario WHERE idDetalle = :idDetalle")
+    @Query("UPDATE detalle_pedido SET estado = 'REGISTRADO', idCliente = :idCliente, esApuesta = 0, idUsuarioEntrega = :idUsuario WHERE idDetalle = :idDetalle")
     void despacharPedidoAClienteEspecifico(int idDetalle, int idCliente, int idUsuario);
 
 }

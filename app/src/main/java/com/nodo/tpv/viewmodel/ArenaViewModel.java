@@ -59,6 +59,9 @@ public class ArenaViewModel extends AndroidViewModel {
     // 2. ESTADOS ARENA POOL (MULTIEQUIPO)
     // =========================================================================================
     private final MutableLiveData<Integer> scoreAzul = new MutableLiveData<>(0);
+
+    private final MutableLiveData<Boolean> procesandoPunto = new MutableLiveData<>(false);
+    public LiveData<Boolean> getProcesandoPunto() { return procesandoPunto; }
     private final MutableLiveData<Integer> scoreRojo = new MutableLiveData<>(0);
     private final MutableLiveData<Map<Integer, Integer>> mapaColoresDuelo = new MutableLiveData<>(new HashMap<>());
     private final MutableLiveData<Map<Integer, Integer>> scoresEquipos = new MutableLiveData<>(new HashMap<>());
@@ -183,49 +186,55 @@ public class ArenaViewModel extends AndroidViewModel {
         final String uuid = uuidDueloActual;
         if (participantesMapa == null || uuid == null) return;
 
+        procesandoPunto.postValue(true); // 🔴 ENCIENDE SEMÁFORO
+
         executorService.execute(() -> {
             List<DetallePedido> bolsa = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuid);
-            if (bolsa == null || bolsa.isEmpty()) return;
 
-            List<Integer> afectados = new ArrayList<>();
-            String regla = db.dueloDao().obtenerReglaCobroDuelo(uuid);
+            // 🔥 CORRECCIÓN: En vez de abortar con 'return', solo dividimos si hay bolsa.
+            if (bolsa != null && !bolsa.isEmpty()) {
+                List<Integer> afectados = new ArrayList<>();
+                String regla = db.dueloDao().obtenerReglaCobroDuelo(uuid);
 
-            if ("TODOS_PAGAN".equals(regla)) {
-                afectados.addAll(participantesMapa.keySet());
-            } else {
-                for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
-                    if (entry.getValue() != colorEquipoGanador) afectados.add(entry.getKey());
+                if ("TODOS_PAGAN".equals(regla)) {
+                    afectados.addAll(participantesMapa.keySet());
+                } else {
+                    for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
+                        if (entry.getValue() != colorEquipoGanador) afectados.add(entry.getKey());
+                    }
+                }
+
+                if (!afectados.isEmpty()) {
+                    BigDecimal divisor = new BigDecimal(afectados.size());
+                    String marcadorRelativo = obtenerMarcadorActualString();
+
+                    for (DetallePedido dp : bolsa) {
+                        BigDecimal precioReparto = dp.precioEnVenta.divide(divisor, 2, RoundingMode.HALF_UP);
+                        for (Integer idCli : afectados) {
+                            DetallePedido nuevo = new DetallePedido();
+                            nuevo.idCliente = idCli;
+                            nuevo.idProducto = dp.idProducto;
+                            nuevo.idMesa = dp.idMesa;
+                            nuevo.idDueloOrigen = uuid;
+                            nuevo.cantidad = 1;
+                            nuevo.precioEnVenta = precioReparto;
+                            nuevo.esApuesta = true;
+                            nuevo.estado = "REGISTRADO";
+                            nuevo.marcadorAlMomento = marcadorRelativo;
+                            nuevo.fechaLong = System.currentTimeMillis();
+                            db.detallePedidoDao().insertarDetalle(nuevo);
+                        }
+                        db.detallePedidoDao().borrarDetallePorId(dp.idDetalle);
+                    }
                 }
             }
 
-            if (afectados.isEmpty()) return;
-
-            BigDecimal divisor = new BigDecimal(afectados.size());
-            String marcadorRelativo = obtenerMarcadorActualString();
-
-            for (DetallePedido dp : bolsa) {
-                BigDecimal precioReparto = dp.precioEnVenta.divide(divisor, 2, RoundingMode.HALF_UP);
-                for (Integer idCli : afectados) {
-                    DetallePedido nuevo = new DetallePedido();
-                    nuevo.idCliente = idCli;
-                    nuevo.idProducto = dp.idProducto;
-                    nuevo.idMesa = dp.idMesa;
-                    nuevo.idDueloOrigen = uuid;
-                    nuevo.cantidad = 1;
-                    nuevo.precioEnVenta = precioReparto;
-                    nuevo.esApuesta = true;
-                    nuevo.estado = "REGISTRADO";
-                    nuevo.marcadorAlMomento = marcadorRelativo;
-                    nuevo.fechaLong = System.currentTimeMillis();
-                    db.detallePedidoDao().insertarDetalle(nuevo);
-                }
-                db.detallePedidoDao().borrarDetallePorId(dp.idDetalle);
-            }
-
+            // 🔥 ESTO SIEMPRE SE DEBE EJECUTAR (Haya bolsa o no)
             mainThreadHandler.post(() -> {
-                actualizarPuntajeEquipoDinamico(colorEquipoGanador);
+                actualizarPuntajeEquipoDinamico(colorEquipoGanador); // SUMA EL PUNTO
                 dbTrigger.setValue(System.currentTimeMillis());
                 _eventoVentaExitosa.setValue(true);
+                procesandoPunto.postValue(false); // 🟢 APAGA EL SEMÁFORO
             });
         });
     }
@@ -235,31 +244,38 @@ public class ArenaViewModel extends AndroidViewModel {
         final Map<Integer, Integer> participantesMapa = (mapaColoresDuelo.getValue() != null) ? new HashMap<>(mapaColoresDuelo.getValue()) : null;
         if (participantesMapa == null || uuid == null) return;
 
+        procesandoPunto.postValue(true); // 🔴 ENCIENDE SEMÁFORO
+
         executorService.execute(() -> {
             List<DetallePedido> bolsa = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuid);
-            if (bolsa == null || bolsa.isEmpty()) return;
 
-            List<Integer> idsAfectados = new ArrayList<>();
-            for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
-                if (entry.getValue() == colorPerdedor) idsAfectados.add(entry.getKey());
-            }
-            if (idsAfectados.isEmpty()) return;
-
-            BigDecimal divisor = new BigDecimal(idsAfectados.size());
-            String marcadorRelativo = obtenerMarcadorActualString();
-
-            for (DetallePedido dp : bolsa) {
-                BigDecimal precioIndividual = dp.precioEnVenta.divide(divisor, 2, RoundingMode.HALF_UP);
-                for (Integer idClientePerdedor : idsAfectados) {
-                    DetallePedido nuevoCobro = crearDetalleDeuda(idClientePerdedor, dp, precioIndividual, uuid, marcadorRelativo);
-                    db.detallePedidoDao().insertarDetalle(nuevoCobro);
+            // 🔥 CORRECCIÓN: Solo procesar el dinero si hay bolsa
+            if (bolsa != null && !bolsa.isEmpty()) {
+                List<Integer> idsAfectados = new ArrayList<>();
+                for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
+                    if (entry.getValue() == colorPerdedor) idsAfectados.add(entry.getKey());
                 }
-                db.detallePedidoDao().borrarDetallePorId(dp.idDetalle);
+
+                if (!idsAfectados.isEmpty()) {
+                    BigDecimal divisor = new BigDecimal(idsAfectados.size());
+                    String marcadorRelativo = obtenerMarcadorActualString();
+
+                    for (DetallePedido dp : bolsa) {
+                        BigDecimal precioIndividual = dp.precioEnVenta.divide(divisor, 2, RoundingMode.HALF_UP);
+                        for (Integer idClientePerdedor : idsAfectados) {
+                            DetallePedido nuevoCobro = crearDetalleDeuda(idClientePerdedor, dp, precioIndividual, uuid, marcadorRelativo);
+                            db.detallePedidoDao().insertarDetalle(nuevoCobro);
+                        }
+                        db.detallePedidoDao().borrarDetallePorId(dp.idDetalle);
+                    }
+                }
             }
 
+            // 🔥 ESTO SIEMPRE SE DEBE EJECUTAR
             mainThreadHandler.post(() -> {
-                actualizarPuntajeEquipoDinamico(colorGanador);
+                actualizarPuntajeEquipoDinamico(colorGanador); // SUMA EL PUNTO
                 dbTrigger.setValue(System.currentTimeMillis());
+                procesandoPunto.postValue(false); // 🟢 APAGA EL SEMÁFORO
             });
         });
     }
@@ -532,12 +548,27 @@ public class ArenaViewModel extends AndroidViewModel {
         });
     }
 
+    // Método original (Usado por la burbuja del jugador)
     public LiveData<BigDecimal> obtenerSaldoIndividualDuelo(int idCliente) {
         return Transformations.switchMap(dbTrigger, trigger -> {
             MutableLiveData<BigDecimal> saldo = new MutableLiveData<>();
             executorService.execute(() -> {
                 if (uuidDueloActual != null) {
                     BigDecimal total = db.detallePedidoDao().obtenerTotalClienteEnDuelo(idCliente, uuidDueloActual);
+                    saldo.postValue(total != null ? total : BigDecimal.ZERO);
+                }
+            });
+            return saldo;
+        });
+    }
+
+    // 🔥 NUEVO MÉTODO (Usado solo para la etiqueta EXTRA del equipo)
+    public LiveData<BigDecimal> obtenerSaldoExtraIndividual(int idCliente) {
+        return Transformations.switchMap(dbTrigger, trigger -> {
+            MutableLiveData<BigDecimal> saldo = new MutableLiveData<>();
+            executorService.execute(() -> {
+                if (uuidDueloActual != null) {
+                    BigDecimal total = db.detallePedidoDao().obtenerTotalExtraClienteEnDuelo(idCliente, uuidDueloActual);
                     saldo.postValue(total != null ? total : BigDecimal.ZERO);
                 }
             });

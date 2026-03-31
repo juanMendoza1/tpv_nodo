@@ -45,6 +45,25 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@+id/guidelineCenter" />
 
+    <LinearLayout
+        android:id="@+id/containerScoreESPN"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_badge_monto"
+        android:backgroundTint="#26FFFFFF"
+        android:orientation="horizontal"
+        android:paddingVertical="4dp"
+        android:paddingHorizontal="20dp"
+        android:gravity="center"
+        android:elevation="0dp"
+        android:layout_marginTop="12dp"
+        android:visibility="gone"
+        tools:visibility="visible"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+    </LinearLayout>
+
     <WebView
         android:id="@+id/webViewCamara"
         android:layout_width="0dp"
@@ -55,7 +74,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/guidelineVAR"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/containerScoreESPN" />
 
     <ScrollView
         android:id="@+id/scrollAccionesLateral"
@@ -69,7 +88,7 @@
         app:layout_constrainedHeight="true"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/containerScoreESPN">
 
         <LinearLayout
             android:id="@+id/panelAccionesLateral"
@@ -234,7 +253,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toStartOf="@+id/scrollAccionesLateral"
         app:layout_constraintStart_toEndOf="@id/guidelineVAR"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/containerScoreESPN">
 
         <androidx.core.widget.NestedScrollView
             android:id="@+id/scrollGuerreros"

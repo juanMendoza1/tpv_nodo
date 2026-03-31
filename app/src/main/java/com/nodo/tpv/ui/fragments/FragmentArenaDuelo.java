@@ -100,6 +100,8 @@ public class FragmentArenaDuelo extends Fragment {
     private LinearLayout containerMarcadoresDinamicos;
     private FlexboxLayout containerGuerrerosDinamicos;
 
+    //private TextView tvScoreGlobalAzul, tvScoreGlobalRojo, tvReglaESPN;
+
     private com.google.android.material.switchmaterial.SwitchMaterial switchPin;
     private MaterialButton btnReglaGanador, btnReglaTodos, btnReglaUltimo;
 
@@ -107,6 +109,10 @@ public class FragmentArenaDuelo extends Fragment {
     private String reglaActualSync = "GANADOR_SALVA";
     private List<Producto> municionActual = new ArrayList<>();
 
+    // 📺 VARIABLES PARA EL MARCADOR ESPN DINÁMICO
+    private TextView tvScoreGlobalIzq, tvScoreGlobalDer, tvLabelGlobalDer;
+
+    private LinearLayout containerScoreESPN;
     private final java.util.Random random = new java.util.Random();
 
     private View scrollMarcadores;
@@ -169,6 +175,9 @@ public class FragmentArenaDuelo extends Fragment {
         containerMarcadoresDinamicos = view.findViewById(R.id.containerMarcadoresDinamicos);
         containerGuerrerosDinamicos = view.findViewById(R.id.containerGuerrerosDinamicos);
 
+        // VINCULACIÓN MARCADOR ESPN
+        containerScoreESPN = view.findViewById(R.id.containerScoreESPN);
+
         // 4. CONFIGURACIÓN
         switchPin = view.findViewById(R.id.switchRequierePin);
         btnReglaGanador = view.findViewById(R.id.btnReglaGanador);
@@ -225,11 +234,20 @@ public class FragmentArenaDuelo extends Fragment {
         // 6. OBSERVADORES
         arenaViewModel.recuperarDueloActivo(idMesaActual);
 
+        arenaViewModel.getProcesandoPunto().observe(getViewLifecycleOwner(), procesando -> {
+            // Si está procesando, bloqueamos los toques en los marcadores
+            bloquearMarcadores(procesando);
+        });
+
         arenaViewModel.getReglaCobroDuelo().observe(getViewLifecycleOwner(), regla -> {
             if (regla != null) {
                 this.reglaActualSync = regla;
                 actualizarBotonesReglaUI(regla);
                 tvReglaActiva.setText("REGLA: " + regla.replace("_", " "));
+
+                // 🔥 SOLUCIÓN: Le pasamos los scores actuales del ViewModel
+                Map<Integer, Integer> scoresActuales = arenaViewModel.getScoresEquipos().getValue();
+                actualizarTextosSwipeYMarcador(scoresActuales);
             }
         });
 
@@ -251,8 +269,12 @@ public class FragmentArenaDuelo extends Fragment {
             if (mapa != null && !mapa.isEmpty()) generarInterfazDinamica(mapa);
         });
 
-        arenaViewModel.getScoresEquipos().observe(getViewLifecycleOwner(), scores -> vincularScoresExistentes());
-        arenaViewModel.getDbTrigger().observe(getViewLifecycleOwner(), t -> vincularScoresExistentes());
+        arenaViewModel.getScoresEquipos().observe(getViewLifecycleOwner(), scores -> {
+            if (scores != null) {
+                // 🔥 Pasamos el mapa directamente para asegurar el refresco inmediato
+                actualizarTextosSwipeYMarcador(scores);
+            }
+        });
     }
 
     private void configurarWebView() {
@@ -358,17 +380,6 @@ public class FragmentArenaDuelo extends Fragment {
                         Toast.makeText(getContext(), "PIN Incorrecto", Toast.LENGTH_SHORT).show();
                     }
                 }).show();
-    }
-
-    private void vincularScoresExistentes() {
-        Map<Integer, Integer> scores = arenaViewModel.getScoresEquipos().getValue();
-        if (scores == null) return;
-        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
-            View v = containerMarcadoresDinamicos.getChildAt(i);
-            if (v.getTag() instanceof Integer && scores.containsKey((int)v.getTag())) {
-                ((TextView) v.findViewById(R.id.tvScoreDinamico)).setText(String.valueOf(scores.get((int)v.getTag())));
-            }
-        }
     }
 
     private void actualizarBotonesReglaUI(String reglaActiva) {
@@ -644,8 +655,12 @@ public class FragmentArenaDuelo extends Fragment {
         arenaViewModel.aplicarDanioUltimoPaga(colorGanador, colorPerdedor);
         dispararCelebracion();
         estallarYLimpiarMesa();
-        equiposSalvadosEnRonda.clear();
+        equiposSalvadosEnRonda.clear(); // Limpiamos la lista de salvados
         animarRestauracionUI();
+
+        // 🔥 SOLUCIÓN: Obtenemos los scores actuales y se los pasamos al método
+        Map<Integer, Integer> scoresActuales = arenaViewModel.getScoresEquipos().getValue();
+        actualizarTextosSwipeYMarcador(scoresActuales); // 📺 Revive los botones de deslizar y quita los escudos
     }
 
     private void animarEquipoSalvado(View view) {
@@ -726,13 +741,21 @@ public class FragmentArenaDuelo extends Fragment {
             ((TextView) vMarcador.findViewById(R.id.tvLabelEquipoDinamico)).setText(getNombreColor(color));
 
             LinearLayout containerMalas = vMarcador.findViewById(R.id.containerMalasVisual);
-
-            // 🔥 Ahora es un LinearLayout para que funcione el Scroll Horizontal
             LinearLayout containerBolas = vMarcador.findViewById(R.id.containerBolasIngresadas);
             View layoutInventarioBolas = vMarcador.findViewById(R.id.layoutInventarioBolas);
 
             if (layoutInventarioBolas != null) {
                 layoutInventarioBolas.setVisibility(View.VISIBLE);
+            }
+
+            // 🛡️ 1. RECUPERAR EL SCROLL Y PROTEGER EL TOQUE PARA DESLIZAR
+            android.widget.HorizontalScrollView scrollBolas = vMarcador.findViewById(R.id.scrollBolas);
+            if (scrollBolas != null) {
+                scrollBolas.setOnTouchListener((viewTouch, event) -> {
+                    // Esto le dice al CardView padre que no intercepte el movimiento lateral
+                    viewTouch.getParent().requestDisallowInterceptTouchEvent(true);
+                    return false; // Retornamos false para que el ScrollView siga procesando el scroll
+                });
             }
 
             // --- VINCULACIÓN ZONA DE SALDOS ---
@@ -756,7 +779,8 @@ public class FragmentArenaDuelo extends Fragment {
                 final Map<Integer, BigDecimal> saldosIndividuales = new HashMap<>();
 
                 for (Integer idJugador : integrantesEquipo) {
-                    arenaViewModel.obtenerSaldoIndividualDuelo(idJugador).observe(getViewLifecycleOwner(), saldo -> {
+                    // CÁMBIALO AQUÍ:
+                    arenaViewModel.obtenerSaldoExtraIndividual(idJugador).observe(getViewLifecycleOwner(), saldo -> {
                         saldosIndividuales.put(idJugador, saldo != null ? saldo : BigDecimal.ZERO);
 
                         BigDecimal totalExtraEquipo = BigDecimal.ZERO;
@@ -800,7 +824,6 @@ public class FragmentArenaDuelo extends Fragment {
                                     if (bola.colorEquipo == color) {
 
                                         if (bola.numeroBola < 0) {
-                                            // Solo guardamos en la lista, YA NO DIBUJAMOS LA BOLA ROJA
                                             listaMalasGuardadas.add(bola.numeroBola);
                                         } else {
                                             sumaPuntosPositivos += bola.numeroBola;
@@ -840,10 +863,20 @@ public class FragmentArenaDuelo extends Fragment {
                                                 if (bolaBandaColor != null) bolaBandaColor.setVisibility(View.GONE);
                                             }
 
+                                            // 🛡️ DIÁLOGO GHOST PREMIUM DE SEGURIDAD AL ANULAR BOLA
                                             bolaView.setOnLongClickListener(v -> {
                                                 requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
-                                                new Thread(() -> AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, numeroBola)).start();
-                                                Toast.makeText(getContext(), "Bola " + numeroBola + " anulada.", Toast.LENGTH_SHORT).show();
+
+                                                new com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext(), R.style.MaterialAlertDialog_Garena)
+                                                        .setTitle("⚠️ REVERTIR JUGADA")
+                                                        .setMessage("¿Estás seguro de anular la bola número " + numeroBola + " de este equipo?")
+                                                        .setNegativeButton("CANCELAR", (dialog, which) -> dialog.dismiss())
+                                                        .setPositiveButton("SÍ, ANULAR", (dialog, which) -> {
+                                                            new Thread(() -> AppDatabase.getInstance(requireContext()).bolaDueloDao().eliminarBola(uuidActual, numeroBola)).start();
+                                                            Toast.makeText(getContext(), "Bola " + numeroBola + " retirada correctamente.", Toast.LENGTH_SHORT).show();
+                                                        })
+                                                        .show();
+
                                                 return true;
                                             });
 
@@ -852,13 +885,17 @@ public class FragmentArenaDuelo extends Fragment {
                                     }
                                 }
 
+                                // 🚀 2. AUTO-SCROLL A LA DERECHA (Muestra siempre la última bola ingresada)
+                                if (scrollBolas != null) {
+                                    scrollBolas.post(() -> scrollBolas.fullScroll(View.FOCUS_RIGHT));
+                                }
+
                                 TextView tvMalasValor = vMarcador.findViewById(R.id.tvMalasValor);
                                 TextView tvScoreDinamico = vMarcador.findViewById(R.id.tvScoreDinamico);
 
-                                // Actualizamos solo el texto de malas (ya quitamos el método "actualizarVistaMalas" que dibujaba bolas)
                                 if (tvMalasValor != null) {
                                     tvMalasValor.setText(String.valueOf(listaMalasGuardadas.size()));
-                                    tvMalasValor.setTag(listaMalasGuardadas); // Esto es clave para que no falle al restar malas
+                                    tvMalasValor.setTag(listaMalasGuardadas);
                                 }
 
                                 if (tvScoreDinamico != null) {
@@ -877,23 +914,72 @@ public class FragmentArenaDuelo extends Fragment {
                         });
             }
 
-            vMarcador.setOnLongClickListener(v -> {
-                requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+            // =========================================================
+            // 👈 LÓGICA DEL SWIPE TO WIN / SAVE (REEMPLAZA AL LONGTOUCH)
+            // =========================================================
+            android.widget.SeekBar swipeToWin = vMarcador.findViewById(R.id.swipeToWin);
+            TextView tvTextoSwipe = vMarcador.findViewById(R.id.tvTextoSwipe);
+            android.widget.FrameLayout layoutFondoSwipe = vMarcador.findViewById(R.id.layoutFondoSwipe);
 
+            if (swipeToWin != null && tvTextoSwipe != null && layoutFondoSwipe != null) {
+
+                // Forzamos el color inicial según la regla
                 if ("ULTIMO_PAGA".equals(reglaActualSync)) {
-                    gestionarReglaUltimoPaga(color);
+                    tvTextoSwipe.setText("👉 DESLIZA PARA SALVARSE");
+                    tvTextoSwipe.setTextColor(Color.parseColor("#00E676"));
+                    swipeToWin.setThumbTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676")));
                 } else {
-                    validarYProcesarPunto(color);
+                    tvTextoSwipe.setText("👉 DESLIZA PARA GANAR");
+                    tvTextoSwipe.setTextColor(Color.parseColor("#FFD600"));
+                    swipeToWin.setThumbTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FFD600")));
                 }
 
-                return true;
-            });
+                swipeToWin.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+                    @Override
+                    public void onProgressChanged(android.widget.SeekBar seekBar, int progress, boolean fromUser) {
+                        if (fromUser) {
+                            // Hace que el texto se vaya desvaneciendo conforme deslizas
+                            tvTextoSwipe.setAlpha(1f - (progress / 100f));
+                        }
+                    }
+
+                    @Override public void onStartTrackingTouch(android.widget.SeekBar seekBar) {}
+
+                    @Override
+                    public void onStopTrackingTouch(android.widget.SeekBar seekBar) {
+                        if (seekBar.getProgress() > 85) { // Tolerancia (si llega casi al final, cuenta)
+                            seekBar.setProgress(100);
+
+                            // 🛡️ BARRERA ANTI-DOBLE COBRO
+                            if (Boolean.TRUE.equals(arenaViewModel.getProcesandoPunto().getValue())) {
+                                Toast.makeText(getContext(), "Procesando cobro, espera...", Toast.LENGTH_SHORT).show();
+                                resetearSwipe(seekBar, tvTextoSwipe);
+                                return;
+                            }
+
+                            requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+
+                            if ("ULTIMO_PAGA".equals(reglaActualSync)) {
+                                layoutFondoSwipe.setVisibility(View.GONE); // Desaparece porque ya se salvó
+                                gestionarReglaUltimoPaga(color);
+                            } else {
+                                validarYProcesarPunto(color);
+                                resetearSwipe(seekBar, tvTextoSwipe); // Vuelve al inicio para la siguiente ronda
+                            }
+
+                        } else {
+                            // Efecto "Rebote" si no lo deslizó completo
+                            resetearSwipe(seekBar, tvTextoSwipe);
+                        }
+                    }
+                });
+            }
 
             containerMarcadoresDinamicos.addView(vMarcador);
 
             View vPeloton = getLayoutInflater().inflate(R.layout.item_peloton_arena, containerGuerrerosDinamicos, false);
-            ((ShapeableImageView) vPeloton.findViewById(R.id.imgAvatarMando)).setStrokeColor(ColorStateList.valueOf(color));
-            FlexboxLayout followers = vPeloton.findViewById(R.id.containerSeguidores);
+            ((com.google.android.material.imageview.ShapeableImageView) vPeloton.findViewById(R.id.imgAvatarMando)).setStrokeColor(ColorStateList.valueOf(color));
+            com.google.android.flexbox.FlexboxLayout followers = vPeloton.findViewById(R.id.containerSeguidores);
 
             for (Integer id : equipos.get(color)) {
                 View burbuja = getLayoutInflater().inflate(R.layout.item_cliente_burbuja, followers, false);
@@ -905,8 +991,6 @@ public class FragmentArenaDuelo extends Fragment {
             }
             containerGuerrerosDinamicos.addView(vPeloton);
         }
-
-        vincularScoresExistentes();
         actualizarEstadoVisualMarcadores();
     }
 
@@ -1280,4 +1364,145 @@ public class FragmentArenaDuelo extends Fragment {
             }
         }).start();
     }
+
+    private void bloquearMarcadores(boolean bloquear) {
+        if (containerMarcadoresDinamicos == null) return;
+
+        for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
+            View v = containerMarcadoresDinamicos.getChildAt(i);
+            android.widget.SeekBar swipeToWin = v.findViewById(R.id.swipeToWin); // 🔥 Recuperamos el slider
+
+            if (bloquear) {
+                v.setClickable(false);
+                v.setLongClickable(false);
+                v.setAlpha(0.7f);
+                if (swipeToWin != null) swipeToWin.setEnabled(false); // Bloquea el slider físicamente
+            } else {
+                if (v.getTag() instanceof Integer) {
+                    int color = (int) v.getTag();
+                    if (!equiposSalvadosEnRonda.contains(color)) {
+                        v.setClickable(true);
+                        v.setLongClickable(true);
+                        v.setAlpha(1.0f);
+                        if (swipeToWin != null) swipeToWin.setEnabled(true); // Desbloquea el slider
+                    }
+                }
+            }
+        }
+    }
+
+    // --- 📺 MÉTODOS DEL MARCADOR ESPN Y EL SWIPE ---
+
+    private void resetearSwipe(android.widget.SeekBar seekBar, TextView tvTextoSwipe) {
+        ObjectAnimator anim = ObjectAnimator.ofInt(seekBar, "progress", seekBar.getProgress(), 0);
+        anim.setDuration(250);
+        anim.setInterpolator(new DecelerateInterpolator());
+        anim.start();
+        tvTextoSwipe.animate().alpha(1f).setDuration(250).start();
+    }
+
+    private void actualizarTextosSwipeYMarcador(Map<Integer, Integer> scores) {
+        // 1. VISIBILIDAD GHOST (Forzamos a que siempre esté visible en la Arena)
+        if (containerScoreESPN != null) {
+            containerScoreESPN.setVisibility(View.VISIBLE);
+        }
+
+        // 2. ACTUALIZACIÓN DE DESLIZADORES
+        if (containerMarcadoresDinamicos != null) {
+            for (int i = 0; i < containerMarcadoresDinamicos.getChildCount(); i++) {
+                View v = containerMarcadoresDinamicos.getChildAt(i);
+                TextView tvTextoSwipe = v.findViewById(R.id.tvTextoSwipe);
+                android.widget.SeekBar swipeToWin = v.findViewById(R.id.swipeToWin);
+                android.widget.FrameLayout layoutFondoSwipe = v.findViewById(R.id.layoutFondoSwipe);
+
+                if (tvTextoSwipe == null || swipeToWin == null) continue;
+
+                if ("ULTIMO_PAGA".equals(reglaActualSync)) {
+                    tvTextoSwipe.setText("👉 DESLIZA PARA SALVARSE");
+                    tvTextoSwipe.setTextColor(Color.parseColor("#00E676"));
+                    swipeToWin.setThumbTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#00E676")));
+
+                    // Oculta el deslizador si el equipo ya está a salvo en esta ronda
+                    if (v.getTag() instanceof Integer && equiposSalvadosEnRonda.contains((Integer) v.getTag())) {
+                        layoutFondoSwipe.setVisibility(View.GONE);
+                    } else {
+                        layoutFondoSwipe.setVisibility(View.VISIBLE);
+                    }
+                } else {
+                    tvTextoSwipe.setText("👉 DESLIZA PARA GANAR");
+                    tvTextoSwipe.setTextColor(Color.parseColor("#FFD600"));
+                    swipeToWin.setThumbTintList(android.content.res.ColorStateList.valueOf(Color.parseColor("#FFD600")));
+                    layoutFondoSwipe.setVisibility(View.VISIBLE);
+                }
+            }
+        }
+
+        // 3. ACTUALIZACIÓN REAL DEL MARCADOR ESPN (MULTIEQUIPO DINÁMICO)
+        if (containerScoreESPN != null) {
+            containerScoreESPN.removeAllViews(); // Limpiamos para redibujar
+
+            Map<Integer, Integer> mapaColores = arenaViewModel.getMapaColoresDuelo().getValue();
+            if (mapaColores != null && scores != null) {
+
+                // Obtenemos cuántos colores únicos están jugando
+                List<Integer> coloresUnicos = new ArrayList<>();
+                for (Integer c : mapaColores.values()) {
+                    if (!coloresUnicos.contains(c)) coloresUnicos.add(c);
+                }
+
+                for (int i = 0; i < coloresUnicos.size(); i++) {
+                    int colorEquipo = coloresUnicos.get(i);
+                    int pts = scores.containsKey(colorEquipo) ? scores.get(colorEquipo) : 0;
+
+                    // Contenedor para este equipo en particular
+                    LinearLayout layoutEquipo = new LinearLayout(requireContext());
+                    layoutEquipo.setOrientation(LinearLayout.HORIZONTAL);
+                    layoutEquipo.setGravity(android.view.Gravity.CENTER);
+
+                    // Texto del Nombre (Ej: "AZUL")
+                    TextView tvLabel = new TextView(requireContext());
+                    tvLabel.setText(getNombreColor(colorEquipo));
+                    tvLabel.setTextColor(colorEquipo);
+                    tvLabel.setTextSize(12f);
+                    tvLabel.setTypeface(null, android.graphics.Typeface.BOLD);
+                    tvLabel.setPadding(0, 0, (int) (8 * getResources().getDisplayMetrics().density), 0); // Margen derecho
+
+                    // Texto del Score (Ej: "2" o "🛡️")
+                    TextView tvScore = new TextView(requireContext());
+                    tvScore.setTextColor(colorEquipo);
+                    tvScore.setTextSize(20f);
+                    tvScore.setTypeface(null, android.graphics.Typeface.BOLD);
+
+                    if ("ULTIMO_PAGA".equals(reglaActualSync)) {
+                        tvScore.setText(equiposSalvadosEnRonda.contains(colorEquipo) ? "🛡️" : String.valueOf(pts));
+                    } else {
+                        tvScore.setText(String.valueOf(pts));
+                    }
+
+                    // Agregamos textos al layout del equipo
+                    layoutEquipo.addView(tvLabel);
+                    layoutEquipo.addView(tvScore);
+
+                    // Agregamos el equipo a la barra ESPN
+                    containerScoreESPN.addView(layoutEquipo);
+
+                    // Si NO es el último equipo de la lista, le metemos el separador Ghost
+                    if (i < coloresUnicos.size() - 1) {
+                        View separador = new View(requireContext());
+                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                                (int) (1 * getResources().getDisplayMetrics().density), // Ancho 1dp
+                                (int) (20 * getResources().getDisplayMetrics().density)  // Alto 20dp
+                        );
+                        int margenHorizontal = (int) (16 * getResources().getDisplayMetrics().density);
+                        params.setMargins(margenHorizontal, 0, margenHorizontal, 0);
+                        separador.setLayoutParams(params);
+                        separador.setBackgroundColor(Color.parseColor("#4DFFFFFF"));
+
+                        containerScoreESPN.addView(separador);
+                    }
+                }
+            }
+        }
+    }
+
 }
