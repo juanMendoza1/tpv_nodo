@@ -29,4 +29,7 @@ public interface BolaDueloDao {
 
     @Query("DELETE FROM bolas_anotadas WHERE idDuelo = :idDuelo")
     void limpiarMesa(String idDuelo);
+
+    @Query("SELECT * FROM bolas_anotadas WHERE idDuelo = :uuid ORDER BY timestamp ASC")
+    List<BolaAnotada> obtenerBolasPorDueloSincrono(String uuid);
 }

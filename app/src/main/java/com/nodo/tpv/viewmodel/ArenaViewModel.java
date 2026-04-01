@@ -15,6 +15,7 @@ import androidx.lifecycle.Transformations;
 import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.dto.LogAgrupadoDTO;
+import com.nodo.tpv.data.entities.BolaAnotada;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DetallePedido;
@@ -77,6 +78,10 @@ public class ArenaViewModel extends AndroidViewModel {
     private final MutableLiveData<String> reglaPagoInd = new MutableLiveData<>("PERDEDORES");
     private final MutableLiveData<Integer> metaCarambolasInd = new MutableLiveData<>(15);
     private final MutableLiveData<List<Producto>> listaApuesta = new MutableLiveData<>(new ArrayList<>());
+
+    public LiveData<List<BolaAnotada>> observarBolasDuelo(String uuidActual) {
+        return db.bolaDueloDao().observarBolasDuelo(uuidActual);
+    }
 
 
     public ArenaViewModel(@NonNull Application application) {
@@ -725,6 +730,274 @@ public class ArenaViewModel extends AndroidViewModel {
             }
         }
         return ids;
+    }
+
+    public void limpiarMesaDuelo(String uuidActual) {
+        executorService.execute(() -> {
+            db.bolaDueloDao().limpiarMesa(uuidActual);
+        });
+    }
+
+    public void anotarBolaDuelo(String uuidActual, int colorEquipo, int numeroBola) {
+        executorService.execute(() -> {
+            db.bolaDueloDao().insertarBola(new BolaAnotada(uuidActual, colorEquipo, numeroBola));
+        });
+    }
+
+    public void revertirBolaDuelo(String uuidActual, int numeroBola) {
+        executorService.execute(() -> {
+            db.bolaDueloDao().eliminarBola(uuidActual, numeroBola);
+        });
+    }
+
+    public void procesarCruceFaltas(String uuidActual, List<Integer> bolasAEliminar, List<BolaAnotada> bolasAInsertar) {
+        executorService.execute(() -> {
+            db.runInTransaction(() -> {
+                if (bolasAEliminar != null) {
+                    for (Integer idBola : bolasAEliminar) {
+                        db.bolaDueloDao().eliminarBola(uuidActual, idBola);
+                    }
+                }
+                if (bolasAInsertar != null) {
+                    for (BolaAnotada bola : bolasAInsertar) {
+                        db.bolaDueloDao().insertarBola(bola);
+                    }
+                }
+            });
+        });
+    }
+
+    public interface BolasBloqueadasCallback {
+        void onLoaded(List<Integer> bolas);
+    }
+
+    public void obtenerBolasBloqueadas(String uuidActual, BolasBloqueadasCallback callback) {
+        executorService.execute(() -> {
+            List<Integer> bloqueadas = db.bolaDueloDao().obtenerBolasYaAnotadasSincrono(uuidActual);
+            mainThreadHandler.post(() -> callback.onLoaded(bloqueadas != null ? bloqueadas : new ArrayList<>()));
+        });
+    }
+
+    public LiveData<List<com.nodo.tpv.data.dto.EventoBatalla>> obtenerLogBatallaEnVivo(String uuidActual) {
+        return Transformations.switchMap(dbTrigger, trigger -> {
+            MutableLiveData<List<com.nodo.tpv.data.dto.EventoBatalla>> historialLiveData = new MutableLiveData<>();
+
+            executorService.execute(() -> {
+                List<com.nodo.tpv.data.dto.EventoBatalla> historialFinal = new ArrayList<>();
+                if (uuidActual == null) {
+                    mainThreadHandler.post(() -> historialLiveData.setValue(historialFinal));
+                    return;
+                }
+
+                try {
+                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault());
+
+                    // --- 1. EL ENCABEZADO PERSISTENTE (EL PADRE) ---
+                    com.nodo.tpv.data.dto.EventoBatalla bannerPadre = new com.nodo.tpv.data.dto.EventoBatalla(
+                            com.nodo.tpv.data.dto.EventoBatalla.TIPO_CIERRE_RONDA,
+                            System.currentTimeMillis(),
+                            sdf.format(new java.util.Date()),
+                            "CRÓNICA DEL DUELO",
+                            "Resumen consolidado por equipos",
+                            obtenerMarcadorActualString(),
+                            android.graphics.Color.WHITE
+                    );
+                    bannerPadre.setEsHijo(false);
+                    historialFinal.add(bannerPadre);
+
+                    // --- 2. OBTENER DATOS DE LA DB ---
+                    List<BolaAnotada> todasLasBolas = db.bolaDueloDao().obtenerBolasPorDueloSincrono(uuidActual);
+                    List<DetallePedido> todosLosPedidos = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuidActual);
+
+                    // --- 3. AGRUPACIÓN LÓGICA ---
+                    Map<Integer, List<Integer>> puntosPorEquipo = new HashMap<>();
+                    int totalMalas = 0;
+
+                    if (todasLasBolas != null) {
+                        for (BolaAnotada b : todasLasBolas) {
+                            if (b.numeroBola < 0) {
+                                totalMalas++;
+                            } else {
+                                if (!puntosPorEquipo.containsKey(b.colorEquipo)) {
+                                    puntosPorEquipo.put(b.colorEquipo, new ArrayList<>());
+                                }
+                                puntosPorEquipo.get(b.colorEquipo).add(b.numeroBola);
+                            }
+                        }
+                    }
+
+                    // --- 4. CONSTRUIR LA LISTA VISUAL (HIJOS) ---
+
+                    // A. Bloques de Puntos por Equipo
+                    for (Map.Entry<Integer, List<Integer>> entry : puntosPorEquipo.entrySet()) {
+                        int color = entry.getKey();
+                        List<Integer> bolas = entry.getValue();
+
+                        StringBuilder sb = new StringBuilder("Bolas: ");
+                        for (int i = 0; i < bolas.size(); i++) {
+                            sb.append(bolas.get(i)).append(i == bolas.size() - 1 ? "" : ", ");
+                        }
+
+                        com.nodo.tpv.data.dto.EventoBatalla itemEquipo = new com.nodo.tpv.data.dto.EventoBatalla(
+                                com.nodo.tpv.data.dto.EventoBatalla.TIPO_BOLA_ANOTADA,
+                                0, // No importa el tiempo aquí, ya es consolidado
+                                "Total: " + bolas.size(),
+                                "PUNTOS EQUIPO " + getNombreColor(color),
+                                sb.toString(),
+                                "Efectividad: " + bolas.size() + " pts",
+                                color
+                        );
+                        itemEquipo.setEsHijo(true);
+                        historialFinal.add(itemEquipo);
+                    }
+
+                    // B. Bloque Único de Malas (Si existen)
+                    if (totalMalas > 0) {
+                        com.nodo.tpv.data.dto.EventoBatalla itemMalas = new com.nodo.tpv.data.dto.EventoBatalla(
+                                com.nodo.tpv.data.dto.EventoBatalla.TIPO_FALTA,
+                                0,
+                                "Sanción",
+                                "TOTAL DE FALTAS",
+                                "Se registraron " + totalMalas + " infracciones en la mesa.",
+                                "Descuento global",
+                                android.graphics.Color.parseColor("#FF1744")
+                        );
+                        itemMalas.setEsHijo(true);
+                        historialFinal.add(itemMalas);
+                    }
+
+                    // C. Bloque de Pedidos / Extras
+                    if (todosLosPedidos != null && !todosLosPedidos.isEmpty()) {
+                        for (DetallePedido p : todosLosPedidos) {
+                            com.nodo.tpv.data.dto.EventoBatalla itemPedido = new com.nodo.tpv.data.dto.EventoBatalla(
+                                    com.nodo.tpv.data.dto.EventoBatalla.TIPO_COMPRA_MUNICION,
+                                    p.fechaLong,
+                                    sdf.format(new java.util.Date(p.fechaLong)),
+                                    "PEDIDO: " + p.cantidad + "x UNID.",
+                                    "Consumo registrado", // Aquí podrías traer el nombre del producto
+                                    "$" + p.precioEnVenta,
+                                    android.graphics.Color.parseColor("#FFD600")
+                            );
+                            itemPedido.setEsHijo(true);
+                            historialFinal.add(itemPedido);
+                        }
+                    }
+
+                } catch (Exception e) {
+                    android.util.Log.e("ARENA_CONSOLIDADO", "Error: " + e.getMessage());
+                }
+
+                mainThreadHandler.post(() -> historialLiveData.setValue(historialFinal));
+            });
+
+            return historialLiveData;
+        });
+    }
+
+    /**
+     * Crea tarjetas siguiendo tus reglas de consolidación:
+     * - Malas: Solo muestra el conteo total.
+     * - Puntos: Lista los números de las bolas.
+     */
+    private com.nodo.tpv.data.dto.EventoBatalla crearEventoConsolidadoGhost(BolaAnotada ref, List<Integer> nums, java.text.SimpleDateFormat sdf) {
+        int cantidad = nums.size();
+        boolean esMala = ref.numeroBola < 0;
+        String hora = sdf.format(new java.util.Date(ref.timestamp));
+
+        String titulo;
+        String descripcion;
+        int color;
+
+        if (esMala) {
+            // --- LOGICA PARA MALAS ---
+            titulo = (cantidad == 1) ? "1 MALA COMETIDA" : cantidad + " MALAS TOTALES";
+            descripcion = "Penalización aplicada al marcador";
+            color = Color.parseColor("#FF1744"); // Rojo Neón
+        } else {
+            // --- LOGICA PARA PUNTOS POSITIVOS ---
+            titulo = (cantidad == 1) ? "PUNTO: BOLA #" + nums.get(0) : "RACHA: " + cantidad + " PUNTOS";
+
+            StringBuilder sb = new StringBuilder("Bolas: ");
+            for (int i = 0; i < nums.size(); i++) {
+                sb.append(nums.get(i)).append(i == nums.size() - 1 ? "" : ", ");
+            }
+            descripcion = sb.toString();
+            color = ref.colorEquipo; // Color del equipo (Azul, Amarillo, etc.)
+        }
+
+        return new com.nodo.tpv.data.dto.EventoBatalla(
+                esMala ? com.nodo.tpv.data.dto.EventoBatalla.TIPO_FALTA : com.nodo.tpv.data.dto.EventoBatalla.TIPO_BOLA_ANOTADA,
+                ref.timestamp,
+                hora,
+                titulo,
+                descripcion,
+                "Marcador tras racha: " + obtenerMarcadorActualString(),
+                color
+        );
+    }
+
+    /**
+     * Función auxiliar para consolidar rachas de puntos o faltas en una sola tarjeta premium
+     */
+    private com.nodo.tpv.data.dto.EventoBatalla crearEventoConsolidado(BolaAnotada ref, List<Integer> nums, java.text.SimpleDateFormat sdf) {
+        int cant = nums.size();
+        boolean esMala = ref.numeroBola < 0;
+
+        // Títulos ejecutivos
+        String titulo = esMala ? (cant == 1 ? "1 FALTA" : cant + " FALTAS")
+                : (cant == 1 ? "PUNTO REGISTRADO" : "RACHA: " + cant + " PUNTOS");
+
+        // Descripción de bolas involucradas
+        StringBuilder desc = new StringBuilder(esMala ? "Puntos descontados: " : "Bolas: ");
+        for (int i = 0; i < nums.size(); i++) {
+            desc.append(Math.abs(nums.get(i))).append(i == nums.size() - 1 ? "" : ", ");
+        }
+
+        return new com.nodo.tpv.data.dto.EventoBatalla(
+                esMala ? com.nodo.tpv.data.dto.EventoBatalla.TIPO_FALTA : com.nodo.tpv.data.dto.EventoBatalla.TIPO_BOLA_ANOTADA,
+                ref.timestamp,
+                sdf.format(new java.util.Date(ref.timestamp)),
+                titulo,
+                desc.toString(),
+                obtenerMarcadorActualString(), // Marcador histórico al momento de la racha
+                esMala ? android.graphics.Color.parseColor("#FF1744") : ref.colorEquipo
+        );
+    }
+
+    /**
+     * Función auxiliar para dar formato a las rachas de bolas en el historial
+     */
+    private com.nodo.tpv.data.dto.EventoBatalla crearEventoDesdeRacha(BolaAnotada inicio, List<Integer> numeros, java.text.SimpleDateFormat sdf) {
+        String hora = sdf.format(new java.util.Date(inicio.timestamp));
+        int cantidad = numeros.size();
+
+        if (inicio.numeroBola < 0) {
+            // Formato para Faltas/Malas
+            return new com.nodo.tpv.data.dto.EventoBatalla(
+                    com.nodo.tpv.data.dto.EventoBatalla.TIPO_FALTA,
+                    inicio.timestamp,
+                    hora,
+                    cantidad == 1 ? "1 FALTA" : cantidad + " FALTAS",
+                    "Penalización de racha",
+                    "Castigo",
+                    android.graphics.Color.parseColor("#FF1744") // Rojo Neón
+            );
+        } else {
+            // Formato para Puntos/Buenas
+            StringBuilder sb = new StringBuilder("Bolas: ");
+            for (int i = 0; i < numeros.size(); i++) {
+                sb.append(numeros.get(i)).append(i == numeros.size() - 1 ? "" : ", ");
+            }
+            return new com.nodo.tpv.data.dto.EventoBatalla(
+                    com.nodo.tpv.data.dto.EventoBatalla.TIPO_BOLA_ANOTADA,
+                    inicio.timestamp,
+                    hora,
+                    cantidad == 1 ? "BOLA #" + numeros.get(0) : "RACHA: " + cantidad + " PUNTOS",
+                    sb.toString(),
+                    "A favor",
+                    inicio.colorEquipo
+            );
+        }
     }
 
 }
