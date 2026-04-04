@@ -1,5 +1,6 @@
 package com.nodo.tpv.data.api;
 
+import com.nodo.tpv.data.dto.MesaDTO;
 import com.nodo.tpv.data.dto.ProductoDTO;
 import com.nodo.tpv.data.dto.SincronizacionPaqueteDTO;
 import com.nodo.tpv.data.entities.Usuario;
@@ -57,4 +58,7 @@ public interface ApiService {
 
     @POST("/api/v1/sync/procesar")
     Call<ResponseBody> sincronizarOperatividad(@Body SincronizacionPaqueteDTO paquete);
+
+    @GET("api/mesas/empresa/{empresaId}")
+    Call<List<MesaDTO>> obtenerEstadoMesas(@Path("empresaId") Long empresaId);
 }

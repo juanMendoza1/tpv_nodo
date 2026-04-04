@@ -26,6 +26,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.textfield.TextInputEditText;
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.ProductoAdapter;
+import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.viewmodel.PedidoViewModel;
@@ -213,20 +214,59 @@ public class CatalogoProductosFragment extends Fragment {
 
         btnFinalizarSeleccion.setOnClickListener(v -> {
             if (idClienteSeleccionado == 0) {
-                // Caso: Bolsa del duelo (ya lo manejas en el ViewModel)
                 requireActivity().getSupportFragmentManager().popBackStack();
             } else {
                 if (!carritoClienteLocal.isEmpty()) {
+                    // 1. Guardamos localmente en Room
                     for (ItemCarritoLocal item : carritoClienteLocal) {
-                        // 🔥 CORRECCIÓN: Agregamos "idMesaActual" como segundo parámetro
-                        // Ahora cumple con los 4 argumentos: idCliente, idMesa, producto, cantidad
                         pedidoViewModel.insertarConsumoDirectoEntregado(
-                                idClienteSeleccionado,
-                                idMesaActual,
-                                item.producto,
-                                item.cantidad
+                                idClienteSeleccionado, idMesaActual, item.producto, item.cantidad
                         );
                     }
+
+                    // 🔥 2. EMPAQUETAMOS LOS PRODUCTOS PARA LA CAJA NEGRA Y EL WEBSOCKET
+                    new Thread(() -> {
+                        try {
+                            java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                            payload.put("idMesa", idMesaActual);
+                            payload.put("idCliente", idClienteSeleccionado);
+
+                            com.nodo.tpv.util.SessionManager session = new com.nodo.tpv.util.SessionManager(requireContext());
+                            if (session.obtenerUsuario() != null) {
+                                payload.put("idUsuarioSlot", session.obtenerUsuario().idUsuario);
+                            }
+
+                            // 📦 Extraemos los productos y sus precios
+                            java.util.List<java.util.Map<String, Object>> listaProductos = new java.util.ArrayList<>();
+                            for (ItemCarritoLocal item : carritoClienteLocal) {
+                                java.util.Map<String, Object> p = new java.util.HashMap<>();
+                                p.put("nombre", item.producto.nombreProducto);
+                                p.put("precio", item.producto.precioProducto);
+                                p.put("cantidad", item.cantidad);
+                                listaProductos.add(p);
+                            }
+                            payload.put("productos", listaProductos); // ¡Ahora el backend sí sabe qué se vendió!
+
+                            com.nodo.tpv.data.entities.ActividadOperativaLocal evento = new com.nodo.tpv.data.entities.ActividadOperativaLocal();
+                            evento.eventoId = java.util.UUID.randomUUID().toString();
+                            evento.tipoEvento = "DESPACHO_MESA";
+                            evento.fechaDispositivo = System.currentTimeMillis();
+                            evento.estadoSync = "PENDIENTE";
+                            evento.detallesJson = new com.google.gson.Gson().toJson(payload);
+
+                            AppDatabase.getInstance(requireContext()).actividadOperativaLocalDao().insertar(evento);
+
+                            // 3. Disparamos la subida inmediata
+                            androidx.work.Constraints constraints = new androidx.work.Constraints.Builder()
+                                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build();
+                            androidx.work.OneTimeWorkRequest syncRequest = new androidx.work.OneTimeWorkRequest.Builder(com.nodo.tpv.data.sync.OperatividadSyncWorker.class)
+                                    .setConstraints(constraints).build();
+                            androidx.work.WorkManager.getInstance(requireContext())
+                                    .enqueueUniqueWork("SyncVentaInmediata", androidx.work.ExistingWorkPolicy.KEEP, syncRequest);
+
+                        } catch (Exception e) {}
+                    }).start();
+
                     Toast.makeText(getContext(), "Productos cargados al cliente ✅", Toast.LENGTH_SHORT).show();
                     requireActivity().getSupportFragmentManager().popBackStack();
                 } else {

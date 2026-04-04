@@ -27,6 +27,7 @@ import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DetallePedido;
 import com.nodo.tpv.data.entities.DueloTemporal;
 import com.nodo.tpv.data.entities.DueloTemporalInd;
+import com.nodo.tpv.data.entities.Mesa;
 import com.nodo.tpv.data.entities.PerfilDueloInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.repository.DueloRepository;
@@ -156,20 +157,16 @@ public class ArenaViewModel extends AndroidViewModel {
     }
 
     public void finalizarDueloCompleto(int idMesa, String tipoJuego) {
-        // Captura de datos rápida desde el hilo principal (UI)
         final String uuidFinal = uuidDueloActual;
         final Map<Integer, Integer> scoreFinal = "POOL".equals(tipoJuego) ?
                 new java.util.HashMap<>(scoresEquipos.getValue()) : new java.util.HashMap<>(scoresIndividualesInd.getValue());
         final Map<Integer, Integer> mapaColores = new java.util.HashMap<>(mapaColoresDuelo.getValue());
-
-        // Copiamos el historial que acumulamos en memoria
         final List<com.nodo.tpv.data.entities.BolaAnotada> copiaHistorial = new java.util.ArrayList<>(historialBolasDueloActual);
 
         if (uuidFinal == null) return;
 
         executorService.execute(() -> {
             try {
-                // 1. CONSTRUIR EL DTO
                 com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO reporte = new com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO();
                 reporte.idMesa = idMesa;
                 reporte.uuidDuelo = uuidFinal;
@@ -179,7 +176,6 @@ public class ArenaViewModel extends AndroidViewModel {
                 java.util.Map<String, com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO.DetalleEquipo> detallesMap = new java.util.HashMap<>();
                 java.util.Map<String, Integer> resumenMap = new java.util.HashMap<>();
 
-                // 2. PROCESAR ESTADÍSTICAS DESDE LA MEMORIA
                 for (Integer colorId : new java.util.HashSet<>(mapaColores.values())) {
                     String nombreE = obtenerNombreColor(colorId);
 
@@ -206,7 +202,6 @@ public class ArenaViewModel extends AndroidViewModel {
                 reporte.detalleEstadistico = detallesMap;
                 reporte.resumenGeneral = resumenMap;
 
-                // 3. ENVIAR EL ÚNICO JSON AL BACKEND
                 String jsonReporte = new com.google.gson.Gson().toJson(reporte);
                 registrarEventoOperativo("DUELO_FINALIZADO_ESTADISTICO", jsonReporte);
 
@@ -214,14 +209,12 @@ public class ArenaViewModel extends AndroidViewModel {
                 android.util.Log.e("ARENA_FIN", "Error al generar el resumen final", e);
             }
 
-            // 4. LIMPIEZA TOTAL
-            historialBolasDueloActual.clear(); // Vaciamos la memoria para el próximo juego
+            historialBolasDueloActual.clear();
             realizarLimpiezaLocal(idMesa, tipoJuego);
         });
     }
 
     private String obtenerNombreColor(int color) {
-        // Mapeo exacto de tus colores (puedes añadir más según tus constantes)
         if (color == -16718337) return "AZUL";
         if (color == -3916) return "ROJO";
         if (color == -10929) return "AMARILLO";
@@ -270,6 +263,33 @@ public class ArenaViewModel extends AndroidViewModel {
         dueloRepository.prepararDueloPoolMultiequipo(uuidDueloActual, copiaSeleccion, idMesa, () -> {
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
+
+        // 🔥 EVENTO BACKEND: Nace el Duelo de Pool (MESA_ABIERTA)
+        executorService.execute(() -> {
+            try {
+                String regla = reglaCobroActiva.getValue() != null ? reglaCobroActiva.getValue() : "GANADOR_SALVA";
+
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("idMesa", idMesa);
+                payload.put("uuidDuelo", uuidDueloActual); // 🔥 CONECTA CON LA ENTIDAD DUELO
+                payload.put("tipoJuego", "POOL");
+                payload.put("reglaDuelo", regla);
+
+                // Rescatamos la tarifa configurada
+                Mesa mesaLocal = db.mesaDao().obtenerMesaPorId(idMesa);
+                payload.put("tarifaTiempo", mesaLocal != null && mesaLocal.tarifaTiempo != null ? mesaLocal.tarifaTiempo : BigDecimal.ZERO);
+
+                // Vinculamos el mesero (Usuario Slot)
+                com.nodo.tpv.data.entities.Usuario usuario = new com.nodo.tpv.util.SessionManager(getApplication().getApplicationContext()).obtenerUsuario();
+                if (usuario != null) {
+                    payload.put("idUsuarioSlot", usuario.idUsuario);
+                }
+
+                registrarEventoOperativo("DUELO_INICIADO", new com.google.gson.Gson().toJson(payload));
+            } catch (Exception e) {
+                Log.e("ARENA_VIEWMODEL", "Error registrando MESA_ABIERTA Pool", e);
+            }
+        });
     }
 
     public void aplicarDanioMultiequipo(int colorEquipoGanador) {
@@ -277,12 +297,11 @@ public class ArenaViewModel extends AndroidViewModel {
         final String uuid = uuidDueloActual;
         if (participantesMapa == null || uuid == null) return;
 
-        procesandoPunto.postValue(true); // 🔴 ENCIENDE SEMÁFORO
+        procesandoPunto.postValue(true);
 
         executorService.execute(() -> {
             List<DetallePedido> bolsa = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuid);
 
-            // 🔥 CORRECCIÓN: En vez de abortar con 'return', solo dividimos si hay bolsa.
             if (bolsa != null && !bolsa.isEmpty()) {
                 List<Integer> afectados = new ArrayList<>();
                 String regla = db.dueloDao().obtenerReglaCobroDuelo(uuid);
@@ -320,12 +339,11 @@ public class ArenaViewModel extends AndroidViewModel {
                 }
             }
 
-            // 🔥 ESTO SIEMPRE SE DEBE EJECUTAR (Haya bolsa o no)
             mainThreadHandler.post(() -> {
-                actualizarPuntajeEquipoDinamico(colorEquipoGanador); // SUMA EL PUNTO
+                actualizarPuntajeEquipoDinamico(colorEquipoGanador);
                 dbTrigger.setValue(System.currentTimeMillis());
                 _eventoVentaExitosa.setValue(true);
-                procesandoPunto.postValue(false); // 🟢 APAGA EL SEMÁFORO
+                procesandoPunto.postValue(false);
             });
         });
     }
@@ -335,12 +353,11 @@ public class ArenaViewModel extends AndroidViewModel {
         final Map<Integer, Integer> participantesMapa = (mapaColoresDuelo.getValue() != null) ? new HashMap<>(mapaColoresDuelo.getValue()) : null;
         if (participantesMapa == null || uuid == null) return;
 
-        procesandoPunto.postValue(true); // 🔴 ENCIENDE SEMÁFORO
+        procesandoPunto.postValue(true);
 
         executorService.execute(() -> {
             List<DetallePedido> bolsa = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuid);
 
-            // 🔥 CORRECCIÓN: Solo procesar el dinero si hay bolsa
             if (bolsa != null && !bolsa.isEmpty()) {
                 List<Integer> idsAfectados = new ArrayList<>();
                 for (Map.Entry<Integer, Integer> entry : participantesMapa.entrySet()) {
@@ -362,11 +379,10 @@ public class ArenaViewModel extends AndroidViewModel {
                 }
             }
 
-            // 🔥 ESTO SIEMPRE SE DEBE EJECUTAR
             mainThreadHandler.post(() -> {
-                actualizarPuntajeEquipoDinamico(colorGanador); // SUMA EL PUNTO
+                actualizarPuntajeEquipoDinamico(colorGanador);
                 dbTrigger.setValue(System.currentTimeMillis());
-                procesandoPunto.postValue(false); // 🟢 APAGA EL SEMÁFORO
+                procesandoPunto.postValue(false);
             });
         });
     }
@@ -452,6 +468,31 @@ public class ArenaViewModel extends AndroidViewModel {
                 this.integrantesAzulCacheados = new ArrayList<>(clientesReales);
                 this.dbTrigger.setValue(System.currentTimeMillis());
             });
+
+            // 🔥 EVENTO BACKEND: Nace el Duelo de 3 Bandas (MESA_ABIERTA) - Solo si es nuevo
+            if (uuidExistente == null) {
+                try {
+                    String regla = reglaPagoInd.getValue() != null ? reglaPagoInd.getValue() : "PERDEDORES";
+
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("idMesa", idMesa);
+                    payload.put("uuidDuelo", this.uuidDueloActual); // 🔥 CONECTA CON LA ENTIDAD DUELO
+                    payload.put("tipoJuego", "3BANDAS");
+                    payload.put("reglaDuelo", regla);
+
+                    Mesa mesaLocal = db.mesaDao().obtenerMesaPorId(idMesa);
+                    payload.put("tarifaTiempo", mesaLocal != null && mesaLocal.tarifaTiempo != null ? mesaLocal.tarifaTiempo : BigDecimal.ZERO);
+
+                    com.nodo.tpv.data.entities.Usuario usuario = new com.nodo.tpv.util.SessionManager(getApplication().getApplicationContext()).obtenerUsuario();
+                    if (usuario != null) {
+                        payload.put("idUsuarioSlot", usuario.idUsuario);
+                    }
+
+                    registrarEventoOperativo("DUELO_INICIADO", new com.google.gson.Gson().toJson(payload));
+                } catch (Exception e) {
+                    Log.e("ARENA_VIEWMODEL", "Error registrando MESA_ABIERTA Ind", e);
+                }
+            }
         });
     }
 
@@ -639,7 +680,6 @@ public class ArenaViewModel extends AndroidViewModel {
         });
     }
 
-    // Método original (Usado por la burbuja del jugador)
     public LiveData<BigDecimal> obtenerSaldoIndividualDuelo(int idCliente) {
         return Transformations.switchMap(dbTrigger, trigger -> {
             MutableLiveData<BigDecimal> saldo = new MutableLiveData<>();
@@ -653,7 +693,6 @@ public class ArenaViewModel extends AndroidViewModel {
         });
     }
 
-    // 🔥 NUEVO MÉTODO (Usado solo para la etiqueta EXTRA del equipo)
     public LiveData<BigDecimal> obtenerSaldoExtraIndividual(int idCliente) {
         return Transformations.switchMap(dbTrigger, trigger -> {
             MutableLiveData<BigDecimal> saldo = new MutableLiveData<>();
@@ -826,14 +865,9 @@ public class ArenaViewModel extends AndroidViewModel {
 
     public void anotarBolaDuelo(String uuidDuelo, int colorEquipo, int numeroBola) {
         executorService.execute(() -> {
-            // 1. Guardar en Room para que la UI se actualice
             com.nodo.tpv.data.entities.BolaAnotada bola = new com.nodo.tpv.data.entities.BolaAnotada(uuidDuelo, colorEquipo, numeroBola);
             db.bolaDueloDao().insertarBola(bola);
-
-            // 2. 🔥 GUARDAR EN MEMORIA (Para el reporte final)
             historialBolasDueloActual.add(bola);
-
-            // Refrescar UI
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
@@ -850,15 +884,9 @@ public class ArenaViewModel extends AndroidViewModel {
         dispararSincronizacion();
     }
 
-    /**
-     * Rebién importante: Si se borra una bola (error), también la quitamos del historial.
-     */
     public void revertirBolaDuelo(String uuid, int numero) {
         executorService.execute(() -> {
-            // FIX: Nombre del método corregido para que coincida con tu DAO
             db.bolaDueloDao().eliminarBola(uuid, numero);
-
-            // También lo quitamos de la memoria del reporte si existe
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
                 historialBolasDelDueloCompleto.removeIf(b -> b.numeroBola == numero);
             }
@@ -908,7 +936,6 @@ public class ArenaViewModel extends AndroidViewModel {
                 try {
                     java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault());
 
-                    // --- 1. EL ENCABEZADO PERSISTENTE (EL PADRE) ---
                     com.nodo.tpv.data.dto.EventoBatalla bannerPadre = new com.nodo.tpv.data.dto.EventoBatalla(
                             com.nodo.tpv.data.dto.EventoBatalla.TIPO_CIERRE_RONDA,
                             System.currentTimeMillis(),
@@ -921,11 +948,9 @@ public class ArenaViewModel extends AndroidViewModel {
                     bannerPadre.setEsHijo(false);
                     historialFinal.add(bannerPadre);
 
-                    // --- 2. OBTENER DATOS DE LA DB ---
                     List<BolaAnotada> todasLasBolas = db.bolaDueloDao().obtenerBolasPorDueloSincrono(uuidActual);
                     List<DetallePedido> todosLosPedidos = db.detallePedidoDao().obtenerDetallesMunicionSincrono(uuidActual);
 
-                    // --- 3. AGRUPACIÓN LÓGICA ---
                     Map<Integer, List<Integer>> puntosPorEquipo = new HashMap<>();
                     int totalMalas = 0;
 
@@ -942,9 +967,6 @@ public class ArenaViewModel extends AndroidViewModel {
                         }
                     }
 
-                    // --- 4. CONSTRUIR LA LISTA VISUAL (HIJOS) ---
-
-                    // A. Bloques de Puntos por Equipo
                     for (Map.Entry<Integer, List<Integer>> entry : puntosPorEquipo.entrySet()) {
                         int color = entry.getKey();
                         List<Integer> bolas = entry.getValue();
@@ -956,7 +978,7 @@ public class ArenaViewModel extends AndroidViewModel {
 
                         com.nodo.tpv.data.dto.EventoBatalla itemEquipo = new com.nodo.tpv.data.dto.EventoBatalla(
                                 com.nodo.tpv.data.dto.EventoBatalla.TIPO_BOLA_ANOTADA,
-                                0, // No importa el tiempo aquí, ya es consolidado
+                                0,
                                 "Total: " + bolas.size(),
                                 "PUNTOS EQUIPO " + getNombreColor(color),
                                 sb.toString(),
@@ -967,7 +989,6 @@ public class ArenaViewModel extends AndroidViewModel {
                         historialFinal.add(itemEquipo);
                     }
 
-                    // B. Bloque Único de Malas (Si existen)
                     if (totalMalas > 0) {
                         com.nodo.tpv.data.dto.EventoBatalla itemMalas = new com.nodo.tpv.data.dto.EventoBatalla(
                                 com.nodo.tpv.data.dto.EventoBatalla.TIPO_FALTA,
@@ -982,7 +1003,6 @@ public class ArenaViewModel extends AndroidViewModel {
                         historialFinal.add(itemMalas);
                     }
 
-                    // C. Bloque de Pedidos / Extras
                     if (todosLosPedidos != null && !todosLosPedidos.isEmpty()) {
                         for (DetallePedido p : todosLosPedidos) {
                             com.nodo.tpv.data.dto.EventoBatalla itemPedido = new com.nodo.tpv.data.dto.EventoBatalla(
@@ -990,7 +1010,7 @@ public class ArenaViewModel extends AndroidViewModel {
                                     p.fechaLong,
                                     sdf.format(new java.util.Date(p.fechaLong)),
                                     "PEDIDO: " + p.cantidad + "x UNID.",
-                                    "Consumo registrado", // Aquí podrías traer el nombre del producto
+                                    "Consumo registrado",
                                     "$" + p.precioEnVenta,
                                     android.graphics.Color.parseColor("#FFD600")
                             );
@@ -1010,11 +1030,6 @@ public class ArenaViewModel extends AndroidViewModel {
         });
     }
 
-    /**
-     * Crea tarjetas siguiendo tus reglas de consolidación:
-     * - Malas: Solo muestra el conteo total.
-     * - Puntos: Lista los números de las bolas.
-     */
     private com.nodo.tpv.data.dto.EventoBatalla crearEventoConsolidadoGhost(BolaAnotada ref, List<Integer> nums, java.text.SimpleDateFormat sdf) {
         int cantidad = nums.size();
         boolean esMala = ref.numeroBola < 0;
@@ -1025,12 +1040,10 @@ public class ArenaViewModel extends AndroidViewModel {
         int color;
 
         if (esMala) {
-            // --- LOGICA PARA MALAS ---
             titulo = (cantidad == 1) ? "1 MALA COMETIDA" : cantidad + " MALAS TOTALES";
             descripcion = "Penalización aplicada al marcador";
-            color = Color.parseColor("#FF1744"); // Rojo Neón
+            color = Color.parseColor("#FF1744");
         } else {
-            // --- LOGICA PARA PUNTOS POSITIVOS ---
             titulo = (cantidad == 1) ? "PUNTO: BOLA #" + nums.get(0) : "RACHA: " + cantidad + " PUNTOS";
 
             StringBuilder sb = new StringBuilder("Bolas: ");
@@ -1038,7 +1051,7 @@ public class ArenaViewModel extends AndroidViewModel {
                 sb.append(nums.get(i)).append(i == nums.size() - 1 ? "" : ", ");
             }
             descripcion = sb.toString();
-            color = ref.colorEquipo; // Color del equipo (Azul, Amarillo, etc.)
+            color = ref.colorEquipo;
         }
 
         return new com.nodo.tpv.data.dto.EventoBatalla(
@@ -1052,18 +1065,13 @@ public class ArenaViewModel extends AndroidViewModel {
         );
     }
 
-    /**
-     * Función auxiliar para consolidar rachas de puntos o faltas en una sola tarjeta premium
-     */
     private com.nodo.tpv.data.dto.EventoBatalla crearEventoConsolidado(BolaAnotada ref, List<Integer> nums, java.text.SimpleDateFormat sdf) {
         int cant = nums.size();
         boolean esMala = ref.numeroBola < 0;
 
-        // Títulos ejecutivos
         String titulo = esMala ? (cant == 1 ? "1 FALTA" : cant + " FALTAS")
                 : (cant == 1 ? "PUNTO REGISTRADO" : "RACHA: " + cant + " PUNTOS");
 
-        // Descripción de bolas involucradas
         StringBuilder desc = new StringBuilder(esMala ? "Puntos descontados: " : "Bolas: ");
         for (int i = 0; i < nums.size(); i++) {
             desc.append(Math.abs(nums.get(i))).append(i == nums.size() - 1 ? "" : ", ");
@@ -1075,20 +1083,16 @@ public class ArenaViewModel extends AndroidViewModel {
                 sdf.format(new java.util.Date(ref.timestamp)),
                 titulo,
                 desc.toString(),
-                obtenerMarcadorActualString(), // Marcador histórico al momento de la racha
+                obtenerMarcadorActualString(),
                 esMala ? android.graphics.Color.parseColor("#FF1744") : ref.colorEquipo
         );
     }
 
-    /**
-     * Función auxiliar para dar formato a las rachas de bolas en el historial
-     */
     private com.nodo.tpv.data.dto.EventoBatalla crearEventoDesdeRacha(BolaAnotada inicio, List<Integer> numeros, java.text.SimpleDateFormat sdf) {
         String hora = sdf.format(new java.util.Date(inicio.timestamp));
         int cantidad = numeros.size();
 
         if (inicio.numeroBola < 0) {
-            // Formato para Faltas/Malas
             return new com.nodo.tpv.data.dto.EventoBatalla(
                     com.nodo.tpv.data.dto.EventoBatalla.TIPO_FALTA,
                     inicio.timestamp,
@@ -1096,10 +1100,9 @@ public class ArenaViewModel extends AndroidViewModel {
                     cantidad == 1 ? "1 FALTA" : cantidad + " FALTAS",
                     "Penalización de racha",
                     "Castigo",
-                    android.graphics.Color.parseColor("#FF1744") // Rojo Neón
+                    android.graphics.Color.parseColor("#FF1744")
             );
         } else {
-            // Formato para Puntos/Buenas
             StringBuilder sb = new StringBuilder("Bolas: ");
             for (int i = 0; i < numeros.size(); i++) {
                 sb.append(numeros.get(i)).append(i == numeros.size() - 1 ? "" : ", ");
