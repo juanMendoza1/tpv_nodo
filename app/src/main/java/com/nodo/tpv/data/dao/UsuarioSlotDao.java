@@ -1,5 +1,6 @@
 package com.nodo.tpv.data.dao;
 
+import androidx.lifecycle.LiveData;
 import androidx.room.Dao;
 import androidx.room.Insert;
 import androidx.room.OnConflictStrategy;
@@ -33,4 +34,7 @@ public interface UsuarioSlotDao {
 
     @Query("UPDATE log_sesion SET sincronizado = -1 WHERE idLog = :id")
     void marcarLogComoErrorCritico(int id);
+
+    @Query("SELECT * FROM usuario_slot ORDER BY idSlot ASC")
+    LiveData<List<UsuarioSlot>> obtenerTodosLive();
 }

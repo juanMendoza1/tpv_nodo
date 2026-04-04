@@ -1,6 +1,7 @@
 package com.nodo.tpv.viewmodel;
 
 import android.app.Application;
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -9,14 +10,22 @@ import androidx.annotation.NonNull;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
+import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
 import com.nodo.tpv.data.database.AppDatabase;
+import com.nodo.tpv.data.entities.ActividadOperativaLocal;
 import com.nodo.tpv.data.entities.LogSesion;
 import com.nodo.tpv.data.entities.Usuario;
 import com.nodo.tpv.data.entities.UsuarioSlot;
+import com.nodo.tpv.data.sync.OperatividadSyncWorker;
 
 import org.mindrot.jbcrypt.BCrypt;
 
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,24 +39,21 @@ public class UsuarioSlotViewModel extends AndroidViewModel {
     private final MutableLiveData<String> mensajeError = new MutableLiveData<>();
     private final MutableLiveData<Boolean> operacionExitosa = new MutableLiveData<>();
 
-    // 🔥 Evento para que MainActivity dispare la sincronización de sesión
-    private final MutableLiveData<Boolean> _eventoSessionSync = new MutableLiveData<>();
+    private final Context context;
 
     public UsuarioSlotViewModel(@NonNull Application application) {
         super(application);
         db = AppDatabase.getInstance(application);
+        this.context = application.getApplicationContext();
     }
 
     // Getters para la UI
     public LiveData<String> getMensajeError() { return mensajeError; }
     public LiveData<Boolean> getOperacionExitosa() { return operacionExitosa; }
-    public LiveData<Boolean> getEventoSessionSync() { return _eventoSessionSync; }
 
-    /**
-     * Método para resetear el disparador de sincronización desde la Activity.
-     */
-    public void resetEventoSession() {
-        _eventoSessionSync.setValue(false);
+    // Getter para que la pantalla de sesión sepa qué slots están ocupados
+    public LiveData<List<UsuarioSlot>> getSlotsActivos() {
+        return db.usuarioSlotDao().obtenerTodosLive();
     }
 
     /**
@@ -83,8 +89,8 @@ public class UsuarioSlotViewModel extends AndroidViewModel {
 
                     db.usuarioSlotDao().actualizarSlot(slot);
 
-                    // 4. Registrar evento de entrada
-                    registrarEventoYNotificarSync(usuario.idUsuario, idSlot, "LOGIN");
+                    // 4. Registrar evento de entrada y disparar sincronización universal
+                    registrarEventoYNotificarSync(usuario.idUsuario, usuario.nombreUsuario, idSlot, "LOGIN");
 
                     mainThreadHandler.post(() -> operacionExitosa.setValue(true));
 
@@ -112,8 +118,8 @@ public class UsuarioSlotViewModel extends AndroidViewModel {
                 // 1. Liberar el slot localmente
                 db.usuarioSlotDao().liberarSlot(idSlot);
 
-                // 2. Registrar evento de salida
-                registrarEventoYNotificarSync(idUsuario, idSlot, "LOGOUT");
+                // 2. Registrar evento de salida y disparar sincronización universal
+                registrarEventoYNotificarSync(idUsuario, slotActual.loginUsuario, idSlot, "LOGOUT");
 
                 mainThreadHandler.post(() -> operacionExitosa.setValue(true));
             }
@@ -121,9 +127,10 @@ public class UsuarioSlotViewModel extends AndroidViewModel {
     }
 
     /**
-     * Crea el registro en Room y avisa a la Activity para que ella dispare el WorkManager.
+     * Crea el registro en Room y avisa al WorkManager (Nueva Arquitectura)
      */
-    private void registrarEventoYNotificarSync(int idUsuario, int slot, String tipo) {
+    private void registrarEventoYNotificarSync(int idUsuario, String nombreUsuario, int slot, String tipo) {
+        // 1. Guardamos en tu tabla histórica de logs de sesión
         LogSesion log = new LogSesion();
         log.idUsuario = idUsuario;
         log.slot = slot;
@@ -131,12 +138,32 @@ public class UsuarioSlotViewModel extends AndroidViewModel {
         log.timestamp = System.currentTimeMillis();
         log.sincronizado = 0;
 
-        // Guardamos en la base de datos local (Room)
         db.usuarioSlotDao().insertarLogSesion(log);
 
-        // 🔥 Notificamos a la MainActivity usando postValue (seguro desde hilo de fondo).
-        // La MainActivity se encargará de ejecutar programarSincronizacionSesion().
-        _eventoSessionSync.postValue(true);
+        // 2. 🔥 GATILLO: Mandamos a la Sala de Espera Universal
+        ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+        pendiente.eventoId = java.util.UUID.randomUUID().toString();
+        pendiente.tipoEvento = tipo; // Enviará "LOGIN" o "LOGOUT"
+        pendiente.fechaDispositivo = System.currentTimeMillis();
+        pendiente.estadoSync = "PENDIENTE";
+
+        // Empaquetamos todo en el JSON para el backend
+        String nombreSeguro = (nombreUsuario != null) ? nombreUsuario : "Desconocido";
+        pendiente.detallesJson = "{ \"idUsuario\": " + idUsuario + ", \"slot\": " + slot + ", \"nombre\": \"" + nombreSeguro + "\", \"accion\": \"" + tipo + "\" }";
+
+        db.actividadOperativaLocalDao().insertar(pendiente);
+
+        // 3. Disparamos el Worker de inmediato
+        dispararSincronizacion();
     }
 
+    private void dispararSincronizacion() {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(OperatividadSyncWorker.class)
+                .setConstraints(constraints).build();
+        WorkManager.getInstance(context).enqueueUniqueWork(
+                "SyncOperatividadInmediata", ExistingWorkPolicy.KEEP, syncRequest);
+    }
 }

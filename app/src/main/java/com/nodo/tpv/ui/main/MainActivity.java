@@ -98,14 +98,6 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
             }
         });
 
-        // B. Sincronización de Sesiones (Punto 1: Fichaje de operarios)
-        usuarioSlotViewModel.getEventoSessionSync().observe(this, nuevoLog -> {
-            if (nuevoLog != null && nuevoLog) {
-                programarSincronizacionSesion(this);
-                usuarioSlotViewModel.resetEventoSession();
-            }
-        });
-
         // Manejo del botón atrás
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -219,7 +211,7 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
     public void setExpandirContenedor(boolean expandir) {
         ConstraintLayout layoutRaiz = findViewById(R.id.content_layout);
         View panelDerecho = findViewById(R.id.container_right);
-        if (layoutRaiz == null || panelDerecho == null) return;
+        if (layoutRaiz == null || panelDerecho == null || isFinishing()) return;
 
         layoutRaiz.post(() -> {
             ConstraintSet set = new ConstraintSet();

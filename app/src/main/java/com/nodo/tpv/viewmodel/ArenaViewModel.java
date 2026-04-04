@@ -1,6 +1,7 @@
 package com.nodo.tpv.viewmodel;
 
 import android.app.Application;
+import android.content.Context;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
@@ -11,6 +12,11 @@ import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Transformations;
+import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
 import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
@@ -24,6 +30,7 @@ import com.nodo.tpv.data.entities.DueloTemporalInd;
 import com.nodo.tpv.data.entities.PerfilDueloInd;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.repository.DueloRepository;
+import com.nodo.tpv.ui.arena.managers.ArenaVARManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -44,6 +51,9 @@ public class ArenaViewModel extends AndroidViewModel {
 
     private final MutableLiveData<Long> dbTrigger = new MutableLiveData<>(System.currentTimeMillis());
     private final MutableLiveData<Boolean> _eventoVentaExitosa = new MutableLiveData<>(false);
+
+    private ArenaVARManager varManager;
+    private final Context context;
 
     // =========================================================================================
     // 1. ESTADOS GLOBALES DE LA ARENA
@@ -88,6 +98,8 @@ public class ArenaViewModel extends AndroidViewModel {
         super(application);
         db = AppDatabase.getInstance(application);
         dueloRepository = new DueloRepository(application);
+        this.context = application.getApplicationContext();
+        varManager = new ArenaVARManager(db, this.context);
     }
 
     // --- GETTERS GLOBALES ---
@@ -998,6 +1010,13 @@ public class ArenaViewModel extends AndroidViewModel {
                     inicio.colorEquipo
             );
         }
+    }
+
+    private void dispararSincronizacion() {
+        Constraints constraints = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
+        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(com.nodo.tpv.data.sync.OperatividadSyncWorker.class)
+                .setConstraints(constraints).build();
+        WorkManager.getInstance(context).enqueueUniqueWork("SyncOperatividadInmediata", ExistingWorkPolicy.KEEP, syncRequest);
     }
 
 }

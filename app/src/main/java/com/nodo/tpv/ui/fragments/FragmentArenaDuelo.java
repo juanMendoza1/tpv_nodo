@@ -1,6 +1,7 @@
 package com.nodo.tpv.ui.fragments;
 
 import android.animation.ObjectAnimator;
+import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -26,6 +27,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.nodo.tpv.R;
 import com.nodo.tpv.adapters.LogBatallaAdapter;
+import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
 import com.nodo.tpv.data.entities.BolaAnotada;
 import com.nodo.tpv.data.entities.Cliente;
@@ -95,6 +97,9 @@ public class FragmentArenaDuelo extends Fragment {
     private LinearLayout containerScoreESPN;
     private View scrollMarcadores;
 
+    private AppDatabase db;
+    private Context context;
+
     private boolean candadoDeslizamiento = false; // Bloquea el swipe por 3 segundos
 
     public static FragmentArenaDuelo newInstance(List<Cliente> azul, List<Cliente> rojo, String tipoJuego, int idMesa) {
@@ -128,6 +133,9 @@ public class FragmentArenaDuelo extends Fragment {
             ((MainActivity) requireActivity()).setExpandirContenedor(true);
         }
 
+        this.db = AppDatabase.getInstance(requireContext());
+        this.context = requireContext();
+
         arenaViewModel = new ViewModelProvider(requireActivity()).get(ArenaViewModel.class);
         pedidoViewModel = new ViewModelProvider(requireActivity()).get(PedidoViewModel.class);
 
@@ -144,7 +152,13 @@ public class FragmentArenaDuelo extends Fragment {
         containerMarcadoresDinamicos = view.findViewById(R.id.containerMarcadoresDinamicos);
         containerGuerrerosDinamicos = view.findViewById(R.id.containerGuerrerosDinamicos);
 
-        varManager = new ArenaVARManager((ConstraintLayout) view, webViewCamaraLocal, scrollMarcadores);
+        varManager = new ArenaVARManager(
+                db,
+                context,
+                (ConstraintLayout) view,
+                webViewCamaraLocal,
+                scrollMarcadores
+        );
         varManager.configurarWebView();
 
         animationHelper = new ArenaAnimationHelper(requireContext(), lottieCelebration, containerMarcadoresDinamicos);
