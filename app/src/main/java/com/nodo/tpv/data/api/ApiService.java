@@ -1,6 +1,7 @@
 package com.nodo.tpv.data.api;
 
 import com.nodo.tpv.data.dto.ProductoDTO;
+import com.nodo.tpv.data.dto.SincronizacionPaqueteDTO;
 import com.nodo.tpv.data.entities.Usuario;
 import java.util.List;
 import java.util.Map;
@@ -53,4 +54,7 @@ public interface ApiService {
             @Query("tipo") String tipo,
             @Query("fecha") long fecha
     );
+
+    @POST("/api/v1/sync/procesar")
+    Call<ResponseBody> sincronizarOperatividad(@Body SincronizacionPaqueteDTO paquete);
 }

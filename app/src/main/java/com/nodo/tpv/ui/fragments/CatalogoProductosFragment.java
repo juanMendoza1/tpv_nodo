@@ -57,6 +57,9 @@ public class CatalogoProductosFragment extends Fragment {
     private Button btnFinalizarSeleccion;
     private boolean estaMinimizado = true;
 
+    private final android.os.Handler searchHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private Runnable searchRunnable;
+
     private RecyclerView rvProductos;
 
     // Carrito temporal (Para cuando le cobramos a un cliente individual)
@@ -122,12 +125,25 @@ public class CatalogoProductosFragment extends Fragment {
         // --- 2. CONFIGURAR BUSCADOR EN TIEMPO REAL ---
         etBuscarProducto.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                // Si el usuario sigue escribiendo, cancelamos la búsqueda anterior
+                if (searchRunnable != null) {
+                    searchHandler.removeCallbacks(searchRunnable);
+                }
+            }
+
             @Override
             public void afterTextChanged(Editable s) {
-                filtrarProductos(s.toString());
+                // Creamos una nueva tarea de búsqueda
+                searchRunnable = () -> filtrarProductosSeguro(s.toString());
+
+                // Esperamos 300ms. Si el usuario no escribe nada más, ¡buscamos!
+                searchHandler.postDelayed(searchRunnable, 300);
             }
         });
+
 
         // --- 3. CONFIGURAR CATÁLOGO PRINCIPAL ---
         rvProductos = view.findViewById(R.id.rvProductos);
@@ -409,6 +425,26 @@ public class CatalogoProductosFragment extends Fragment {
                 tvPrecio = v.findViewById(R.id.tvPrecioResumen);
                 btnDelete = v.findViewById(R.id.btnBorrarItem);
             }
+        }
+    }
+
+    private void filtrarProductosSeguro(String query) {
+        if (productoAdapter == null || listaProductosCompleta == null) return;
+
+        if (query.trim().isEmpty()) {
+            // Enviamos una COPIA de la lista completa para proteger la memoria
+            productoAdapter.setProductos(new ArrayList<>(listaProductosCompleta));
+        } else {
+            List<Producto> filtrada = new ArrayList<>();
+            String queryLower = query.toLowerCase().trim();
+
+            for (Producto p : listaProductosCompleta) {
+                if (p.getNombreProducto() != null && p.getNombreProducto().toLowerCase().contains(queryLower)) {
+                    filtrada.add(p);
+                }
+            }
+            // Enviamos la lista filtrada al Adapter
+            productoAdapter.setProductos(filtrada);
         }
     }
 }

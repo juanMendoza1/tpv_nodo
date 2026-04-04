@@ -1,9 +1,16 @@
 package com.nodo.tpv.data.repository;
 
 import android.app.Application;
+import android.content.Context;
 
 import androidx.lifecycle.LiveData;
+import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
+import com.nodo.tpv.data.dao.ActividadOperativaLocalDao;
 import com.nodo.tpv.data.dao.ClienteDao;
 import com.nodo.tpv.data.dao.DetallePedidoDao;
 import com.nodo.tpv.data.dao.DueloDao;
@@ -11,10 +18,12 @@ import com.nodo.tpv.data.dao.DueloTemporalIndDao;
 import com.nodo.tpv.data.database.AppDatabase;
 import com.nodo.tpv.data.dto.DetalleConNombre;
 import com.nodo.tpv.data.dto.DetalleHistorialDuelo;
+import com.nodo.tpv.data.entities.ActividadOperativaLocal;
 import com.nodo.tpv.data.entities.DetallePedido;
 import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.entities.VentaDetalleHistorial;
 import com.nodo.tpv.data.entities.VentaHistorial;
+import com.nodo.tpv.data.sync.OperatividadSyncWorker;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -28,7 +37,11 @@ public class PedidoRepository {
     private final DueloDao dueloDao;
     private final ClienteDao clienteDao;
     private final DueloTemporalIndDao dueloTemporalIndDao;
+    private final ActividadOperativaLocalDao actividadOperativaLocalDao;
     private final ExecutorService executorService;
+
+    // Guardamos el contexto a nivel global de la clase para el WorkManager
+    private final Context context;
 
     public PedidoRepository(Application application) {
         AppDatabase db = AppDatabase.getInstance(application);
@@ -36,6 +49,9 @@ public class PedidoRepository {
         this.dueloDao = db.dueloDao();
         this.clienteDao = db.clienteDao();
         this.dueloTemporalIndDao = db.dueloTemporalIndDao();
+        this.actividadOperativaLocalDao = db.actividadOperativaLocalDao();
+
+        this.context = application.getApplicationContext();
 
         // Hilo dedicado a las transacciones de ventas y pedidos
         this.executorService = Executors.newFixedThreadPool(4);
@@ -61,7 +77,6 @@ public class PedidoRepository {
         executorService.execute(() -> {
             String uuid = uuidEnMemoria;
 
-            // Si no hay UUID en memoria, buscamos en BD
             if (uuid == null) uuid = dueloTemporalIndDao.obtenerIdDueloPorMesaSincrono(idMesa);
             if (uuid == null) uuid = dueloDao.obtenerUuidDueloActivoPorMesa(idMesa);
 
@@ -79,6 +94,16 @@ public class PedidoRepository {
                     dp.fechaLong = System.currentTimeMillis();
                     detallePedidoDao.insertarDetalle(dp);
                 }
+
+                // 🔥 GATILLO: Registrar MUNICIÓN_AGREGADA
+                ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+                pendiente.eventoId = java.util.UUID.randomUUID().toString();
+                pendiente.tipoEvento = "MUNICION_AGREGADA";
+                pendiente.fechaDispositivo = System.currentTimeMillis();
+                pendiente.estadoSync = "PENDIENTE";
+                pendiente.detallesJson = "{ \"idMesa\": " + idMesa + ", \"idProducto\": " + producto.idProducto + ", \"cantidad\": " + cantidad + " }";
+                actividadOperativaLocalDao.insertar(pendiente);
+                dispararSincronizacion();
             }
             if (onComplete != null) onComplete.run();
         });
@@ -87,6 +112,17 @@ public class PedidoRepository {
     public void marcarComoEntregadoLocal(int idDetalle, int idUsuario, Runnable onComplete) {
         executorService.execute(() -> {
             detallePedidoDao.despacharPedidoLocal(idDetalle, "ENTREGADO", idUsuario);
+
+            // 🔥 GATILLO: Registrar DESPACHO INDIVIDUAL
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "DESPACHO";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idDetalle\": " + idDetalle + ", \"idUsuario\": " + idUsuario + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -94,10 +130,20 @@ public class PedidoRepository {
     public void despacharTodoLaMesa(int idMesa, int idUsuario, Runnable onComplete) {
         executorService.execute(() -> {
             List<DetallePedido> pendientes = detallePedidoDao.obtenerPendientesMesaSincrono(idMesa);
-            if (pendientes != null) {
+            if (pendientes != null && !pendientes.isEmpty()) {
                 for (DetallePedido dp : pendientes) {
                     detallePedidoDao.despacharPedidoLocal(dp.idDetalle, "ENTREGADO", idUsuario);
                 }
+
+                // 🔥 GATILLO: Registrar DESPACHO MASIVO
+                ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+                pendiente.eventoId = java.util.UUID.randomUUID().toString();
+                pendiente.tipoEvento = "DESPACHO_MESA";
+                pendiente.fechaDispositivo = System.currentTimeMillis();
+                pendiente.estadoSync = "PENDIENTE";
+                pendiente.detallesJson = "{ \"idMesa\": " + idMesa + ", \"idUsuario\": " + idUsuario + ", \"cantidadDespachada\": " + pendientes.size() + " }";
+                actividadOperativaLocalDao.insertar(pendiente);
+                dispararSincronizacion();
             }
             if (onComplete != null) onComplete.run();
         });
@@ -106,6 +152,17 @@ public class PedidoRepository {
     public void cancelarDetallePendiente(int idDetalle, Runnable onComplete) {
         executorService.execute(() -> {
             detallePedidoDao.cancelarDetallePorId(idDetalle);
+
+            // 🔥 GATILLO: Registrar CANCELACIÓN INDIVIDUAL
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "CANCELACION_DETALLE";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idDetalle\": " + idDetalle + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -113,6 +170,17 @@ public class PedidoRepository {
     public void cancelarMunicionPendienteMesa(int idMesa, Runnable onComplete) {
         executorService.execute(() -> {
             detallePedidoDao.cancelarTodosLosPendientesMesa(idMesa);
+
+            // 🔥 GATILLO: Registrar CANCELACIÓN DE MESA COMPLETA
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "CANCELACION_MESA";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idMesa\": " + idMesa + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -128,10 +196,21 @@ public class PedidoRepository {
             dp.idProducto = producto.idProducto;
             dp.cantidad = cantidad;
             dp.precioEnVenta = producto.getPrecioProducto();
-            dp.estado = "ENTREGADO"; // Pasa directo a la cuenta
+            dp.estado = "ENTREGADO";
             dp.esApuesta = false;
             dp.fechaLong = System.currentTimeMillis();
             detallePedidoDao.insertarDetalle(dp);
+
+            // 🔥 GATILLO: CONSUMO_DIRECTO
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "CONSUMO_DIRECTO";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idProducto\": " + producto.idProducto + ", \"cantidad\": " + cantidad + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -170,6 +249,16 @@ public class PedidoRepository {
                 detallePedidoDao.borrarCuentaCliente(idCliente);
                 clienteDao.eliminarPorId(idCliente);
 
+                // 🔥 GATILLO: CIERRE_CUENTA
+                ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+                pendiente.eventoId = java.util.UUID.randomUUID().toString();
+                pendiente.tipoEvento = "CIERRE_CUENTA";
+                pendiente.fechaDispositivo = System.currentTimeMillis();
+                pendiente.estadoSync = "PENDIENTE";
+                pendiente.detallesJson = "{ \"idCliente\": " + idCliente + ", \"metodoPago\": \"" + metodo + "\", \"total\": " + total + " }";
+                actividadOperativaLocalDao.insertar(pendiente);
+                dispararSincronizacion();
+
                 if (onComplete != null) onComplete.run();
             }
         });
@@ -181,5 +270,24 @@ public class PedidoRepository {
 
     public LiveData<List<VentaHistorial>> obtenerTodoElHistorial() {
         return detallePedidoDao.obtenerTodoElHistorial();
+    }
+
+    private void dispararSincronizacion() {
+        // 1. Configuramos que SÓLO se ejecute si hay conexión a internet
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        // 2. Creamos la petición de trabajo de una sola vez
+        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(OperatividadSyncWorker.class)
+                .setConstraints(constraints)
+                .build();
+
+        // 3. Lo encolamos de forma ÚNICA.
+        WorkManager.getInstance(this.context).enqueueUniqueWork(
+                "SyncOperatividadInmediata",
+                ExistingWorkPolicy.KEEP,
+                syncRequest
+        );
     }
 }

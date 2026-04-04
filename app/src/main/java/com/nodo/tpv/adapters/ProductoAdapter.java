@@ -31,10 +31,13 @@ public class ProductoAdapter extends RecyclerView.Adapter<ProductoAdapter.Produc
         this.listener = listener;
     }
 
-    public void setProductos(List<Producto> productos) {
-        this.productos = productos;
-        // Importante: notifyDataSetChanged permitirá que se refresquen los
-        // estados de stock cuando el LiveData detecte cambios en Room.
+    public void setProductos(List<Producto> nuevosProductos) {
+        // Limpiamos de forma segura y agregamos los nuevos elementos
+        this.productos.clear();
+        if (nuevosProductos != null) {
+            this.productos.addAll(nuevosProductos);
+        }
+        // Notificamos al RecyclerView que todo cambió
         notifyDataSetChanged();
     }
 

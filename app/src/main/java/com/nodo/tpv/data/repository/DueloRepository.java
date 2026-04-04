@@ -1,19 +1,28 @@
 package com.nodo.tpv.data.repository;
 
 import android.app.Application;
+import android.content.Context;
 
 import androidx.lifecycle.LiveData;
+import androidx.work.Constraints;
+import androidx.work.ExistingWorkPolicy;
+import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.WorkManager;
 
+import com.nodo.tpv.data.dao.ActividadOperativaLocalDao;
 import com.nodo.tpv.data.dao.DetalleDueloTemporalIndDao;
 import com.nodo.tpv.data.dao.DueloDao;
 import com.nodo.tpv.data.dao.DueloTemporalIndDao;
 import com.nodo.tpv.data.dao.PerfilDueloIndDao;
 import com.nodo.tpv.data.database.AppDatabase;
+import com.nodo.tpv.data.entities.ActividadOperativaLocal;
 import com.nodo.tpv.data.entities.Cliente;
 import com.nodo.tpv.data.entities.DetalleDueloTemporalInd;
 import com.nodo.tpv.data.entities.DueloTemporal;
 import com.nodo.tpv.data.entities.DueloTemporalInd;
 import com.nodo.tpv.data.entities.PerfilDueloInd;
+import com.nodo.tpv.data.sync.OperatividadSyncWorker;
 
 import java.util.List;
 import java.util.Map;
@@ -26,7 +35,9 @@ public class DueloRepository {
     private final DueloTemporalIndDao dueloIndDao;
     private final DetalleDueloTemporalIndDao detalleDueloIndDao;
     private final PerfilDueloIndDao perfilDueloIndDao;
+    private final ActividadOperativaLocalDao actividadOperativaLocalDao;
     private final ExecutorService executorService;
+    private final Context context;
 
     public DueloRepository(Application application) {
         AppDatabase db = AppDatabase.getInstance(application);
@@ -34,8 +45,9 @@ public class DueloRepository {
         this.dueloIndDao = db.dueloTemporalIndDao();
         this.detalleDueloIndDao = db.detalleDueloTemporalIndDao();
         this.perfilDueloIndDao = db.perfilDueloIndDao();
+        this.actividadOperativaLocalDao = db.actividadOperativaLocalDao();
+        this.context = application.getApplicationContext();
 
-        // Un thread pool dedicado para operaciones de duelos
         this.executorService = Executors.newFixedThreadPool(4);
     }
 
@@ -60,6 +72,17 @@ public class DueloRepository {
                 );
                 dueloDao.insertarParticipante(dt);
             }
+
+            // 🔥 GATILLO: Inicio de Duelo Pool
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "DUELO_POOL_INICIADO";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idMesa\": " + idMesa + ", \"uuidDuelo\": \"" + uuidDuelo + "\", \"participantes\": " + seleccion.size() + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -67,6 +90,17 @@ public class DueloRepository {
     public void finalizarDueloPool(int idMesa, Runnable onComplete) {
         executorService.execute(() -> {
             dueloDao.finalizarDueloPorMesa(idMesa);
+
+            // 🔥 GATILLO: Fin de Duelo Pool
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "DUELO_POOL_FINALIZADO";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idMesa\": " + idMesa + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -103,6 +137,17 @@ public class DueloRepository {
                     dueloIndDao.insertarOActualizar(nuevo);
                 }
             }
+
+            // 🔥 GATILLO: Inicio Duelo Individual (3 Bandas)
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "DUELO_IND_INICIADO";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idMesa\": " + idMesa + ", \"uuidDuelo\": \"" + uuidDuelo + "\", \"cantidadJugadores\": " + clientes.size() + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -110,6 +155,17 @@ public class DueloRepository {
     public void finalizarDueloIndividual(int idMesa, Runnable onComplete) {
         executorService.execute(() -> {
             dueloIndDao.finalizarDueloMesa(idMesa);
+
+            // 🔥 GATILLO: Fin de Duelo Individual
+            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+            pendiente.eventoId = java.util.UUID.randomUUID().toString();
+            pendiente.tipoEvento = "DUELO_IND_FINALIZADO";
+            pendiente.fechaDispositivo = System.currentTimeMillis();
+            pendiente.estadoSync = "PENDIENTE";
+            pendiente.detallesJson = "{ \"idMesa\": " + idMesa + " }";
+            actividadOperativaLocalDao.insertar(pendiente);
+            dispararSincronizacion();
+
             if (onComplete != null) onComplete.run();
         });
     }
@@ -122,8 +178,35 @@ public class DueloRepository {
         executorService.execute(() -> {
             if (uuidDueloActual != null) {
                 dueloDao.actualizarReglaCobroDuelo(uuidDueloActual, nuevaRegla);
+
+                // 🔥 GATILLO: Cambio de regla
+                ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
+                pendiente.eventoId = java.util.UUID.randomUUID().toString();
+                pendiente.tipoEvento = "REGLA_DUELO_ACTUALIZADA";
+                pendiente.fechaDispositivo = System.currentTimeMillis();
+                pendiente.estadoSync = "PENDIENTE";
+                pendiente.detallesJson = "{ \"uuidDuelo\": \"" + uuidDueloActual + "\", \"nuevaRegla\": \"" + nuevaRegla + "\" }";
+                actividadOperativaLocalDao.insertar(pendiente);
+                dispararSincronizacion();
+
                 if (onComplete != null) onComplete.run();
             }
         });
+    }
+
+    private void dispararSincronizacion() {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(OperatividadSyncWorker.class)
+                .setConstraints(constraints)
+                .build();
+
+        WorkManager.getInstance(this.context).enqueueUniqueWork(
+                "SyncOperatividadInmediata",
+                ExistingWorkPolicy.KEEP,
+                syncRequest
+        );
     }
 }
