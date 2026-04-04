@@ -43,6 +43,8 @@ import com.nodo.tpv.viewmodel.PedidoViewModel;
 import com.nodo.tpv.viewmodel.ProductoViewModel;
 import com.nodo.tpv.viewmodel.UsuarioSlotViewModel;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity implements FragmentSesion.OnSesionListener {
@@ -56,6 +58,9 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
     private SessionManager sessionManager;
     private View splashContainer;
     private View contentLayout;
+
+    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -185,6 +190,19 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
 
     @Override
     public void onComandoAbrirMesa(int idMesa, String tipoJuego) {
+        executorService.execute(() -> {
+            AppDatabase db = AppDatabase.getInstance(this);
+            com.nodo.tpv.data.entities.ActividadOperativaLocal p = new com.nodo.tpv.data.entities.ActividadOperativaLocal();
+            p.eventoId = java.util.UUID.randomUUID().toString();
+            p.tipoEvento = "MESA_ABIERTA";
+            p.fechaDispositivo = System.currentTimeMillis();
+            p.estadoSync = "PENDIENTE";
+            p.detallesJson = "{ \"idMesa\": " + idMesa + ", \"tipoJuego\": \"" + tipoJuego + "\" }";
+
+            db.actividadOperativaLocalDao().insertar(p);
+            programarSincronizacionOperatividad(this); // Asegúrate de tener este método similar a programarSincronizacionStock
+        });
+
         ListaClientesFragment fragment = new ListaClientesFragment();
         Bundle args = new Bundle();
         args.putInt("id_mesa", idMesa);
@@ -265,6 +283,23 @@ public class MainActivity extends AppCompatActivity implements FragmentSesion.On
 
         WorkManager.getInstance(context).enqueueUniqueWork(
                 "sync_session_unique",
+                ExistingWorkPolicy.KEEP,
+                syncRequest
+        );
+    }
+
+    public void programarSincronizacionOperatividad(Context context) {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(com.nodo.tpv.data.sync.OperatividadSyncWorker.class)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS)
+                .build();
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+                "sync_operatividad_unique",
                 ExistingWorkPolicy.KEEP,
                 syncRequest
         );

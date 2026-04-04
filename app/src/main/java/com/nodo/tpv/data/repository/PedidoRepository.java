@@ -28,6 +28,7 @@ import com.nodo.tpv.data.sync.OperatividadSyncWorker;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -189,10 +190,11 @@ public class PedidoRepository {
     // CONSUMO DIRECTO Y CIERRE DE CUENTA
     // ==========================================
 
-    public void insertarConsumoDirectoEntregado(int idCliente, Producto producto, int cantidad, Runnable onComplete) {
+    public void insertarConsumoDirectoEntregado(int idCliente, int idMesa, Producto producto, int cantidad, Runnable onComplete) {
         executorService.execute(() -> {
             DetallePedido dp = new DetallePedido();
             dp.idCliente = idCliente;
+            dp.idMesa = idMesa; // 🔥 Agregamos la mesa
             dp.idProducto = producto.idProducto;
             dp.cantidad = cantidad;
             dp.precioEnVenta = producto.getPrecioProducto();
@@ -201,13 +203,18 @@ public class PedidoRepository {
             dp.fechaLong = System.currentTimeMillis();
             detallePedidoDao.insertarDetalle(dp);
 
-            // 🔥 GATILLO: CONSUMO_DIRECTO
+            // 🔥 GATILLO UNIVERSAL: Registro de Pedido Directo
             ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
             pendiente.eventoId = java.util.UUID.randomUUID().toString();
-            pendiente.tipoEvento = "CONSUMO_DIRECTO";
+            pendiente.tipoEvento = "PEDIDO_DIRECTO";
             pendiente.fechaDispositivo = System.currentTimeMillis();
             pendiente.estadoSync = "PENDIENTE";
-            pendiente.detallesJson = "{ \"idProducto\": " + producto.idProducto + ", \"cantidad\": " + cantidad + " }";
+
+            // JSON súper detallado para el backend
+            pendiente.detallesJson = String.format(Locale.US,
+                    "{ \"idCliente\": %d, \"idMesa\": %d, \"idProducto\": %d, \"nombre\": \"%s\", \"cantidad\": %d, \"precio\": %s }",
+                    idCliente, idMesa, producto.idProducto, producto.nombreProducto, cantidad, producto.precioProducto.toString());
+
             actividadOperativaLocalDao.insertar(pendiente);
             dispararSincronizacion();
 

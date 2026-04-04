@@ -34,10 +34,7 @@ public class PedidoViewModel extends AndroidViewModel {
     private final ExecutorService executorService = Executors.newFixedThreadPool(4);
     private final Handler mainThreadHandler = new Handler(Looper.getMainLooper());
 
-    // Trigger para refrescar la UI
     private final MutableLiveData<Long> dbTrigger = new MutableLiveData<>(System.currentTimeMillis());
-
-    // Evento para notificar a la UI cuando una venta o registro fue exitoso
     private final MutableLiveData<Boolean> _eventoVentaExitosa = new MutableLiveData<>();
 
     public interface OnDetallesCargadosListener { void onCargados(List<VentaDetalleHistorial> detalles); }
@@ -48,13 +45,26 @@ public class PedidoViewModel extends AndroidViewModel {
         pedidoRepository = new PedidoRepository(application);
     }
 
-    // --- GETTERS DE ESTADO ---
     public LiveData<Long> getDbTrigger() { return dbTrigger; }
     public LiveData<Boolean> getEventoVentaExitosa() { return _eventoVentaExitosa; }
     public void resetEventoVenta() { _eventoVentaExitosa.setValue(false); }
 
-    // --- GESTIÓN DE PEDIDOS E INSERCIONES ---
+    // --- GESTIÓN DE PEDIDOS DESDE LISTA CLIENTES ---
 
+    /**
+     * 🔥 ACTUALIZADO: Registra un pedido ya entregado y lo manda al Backend.
+     * Se usa cuando desde Lista Clientes se abre el catálogo y se confirma el pedido.
+     */
+    public void insertarConsumoDirectoEntregado(int idCliente, int idMesa, Producto producto, int cantidad) {
+        // Delegamos al repositorio para que inserte en Room y cree el evento de Sincronización
+        pedidoRepository.insertarConsumoDirectoEntregado(idCliente, idMesa, producto, cantidad, () -> {
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
+        });
+    }
+
+    /**
+     * Inserta un consumo que queda PENDIENTE (esperando ser despachado).
+     */
     public void insertarConsumoDirecto(int idCliente, Producto producto, int cantidad) {
         executorService.execute(() -> {
             int idMesa = db.clienteDao().obtenerMesaDelCliente(idCliente);
@@ -65,10 +75,7 @@ public class PedidoViewModel extends AndroidViewModel {
             dp.idProducto = producto.idProducto;
             dp.idMesa = idMesa;
             dp.cantidad = cantidad;
-
-            // CORRECCIÓN: Acceso directo a precioProducto
             dp.precioEnVenta = producto.precioProducto;
-
             dp.fechaLong = System.currentTimeMillis();
             dp.estado = "PENDIENTE";
 
@@ -77,36 +84,22 @@ public class PedidoViewModel extends AndroidViewModel {
             if (clienteEnDuelo) {
                 dp.esApuesta = true;
                 dp.idDueloOrigen = uuidDuelo;
-                dp.marcadorAlMomento = "Consumo Directo"; // Placeholder hasta que ArenaViewModel tome el control
+                dp.marcadorAlMomento = "Consumo Directo";
             } else {
                 dp.esApuesta = false;
             }
 
             db.detallePedidoDao().insertarDetalle(dp);
-            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
-        });
-    }
 
-    public void insertarConsumoDirectoEntregado(int idCliente, Producto producto, int cantidad) {
-        executorService.execute(() -> {
-            DetallePedido dp = new DetallePedido();
-            dp.idCliente = idCliente;
-            dp.idProducto = producto.idProducto;
-            dp.cantidad = cantidad;
+            // Aquí podrías agregar un dispararSincronizaciónOperatividad si quieres que
+            // el backend sepa de pedidos pendientes.
 
-            // CORRECCIÓN: Acceso directo a precioProducto
-            dp.precioEnVenta = producto.precioProducto;
-
-            dp.estado = "ENTREGADO";
-            dp.esApuesta = false;
-            dp.fechaLong = System.currentTimeMillis();
-
-            db.detallePedidoDao().insertarDetalle(dp);
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 
     // --- CIERRE DE CUENTA E HISTORIAL ---
+
     public void finalizarCuenta(int id, String alias, String metodo, String fotoBase64) {
         pedidoRepository.finalizarCuenta(id, alias, metodo, fotoBase64, () -> {
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
@@ -140,7 +133,7 @@ public class PedidoViewModel extends AndroidViewModel {
 
     public void marcarComoEntregado(int idDetalle, int idUsuario, String loginOperativo) {
         pedidoRepository.marcarComoEntregadoLocal(idDetalle, idUsuario, () -> {
-            dispararSincronizacion();
+            dispararSincronizacionStock();
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
@@ -154,7 +147,7 @@ public class PedidoViewModel extends AndroidViewModel {
                 db.detallePedidoDao().despacharPedidoLocal(dp.idDetalle, "ENTREGADO", idUsuario);
             }
 
-            dispararSincronizacion();
+            dispararSincronizacionStock();
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
@@ -171,7 +164,10 @@ public class PedidoViewModel extends AndroidViewModel {
         });
     }
 
-    private void dispararSincronizacion() {
+    /**
+     * Sincroniza el Stock real con el servidor central.
+     */
+    private void dispararSincronizacionStock() {
         Constraints restricciones = new Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build();
@@ -183,9 +179,10 @@ public class PedidoViewModel extends AndroidViewModel {
         WorkManager.getInstance(getApplication()).enqueue(syncRequest);
     }
 
+    // --- LÓGICA DE ARENA / DUELOS ---
+
     public void insertarMunicionDueloPendiente(int idMesa, Producto producto, int cantidad) {
         executorService.execute(() -> {
-            // Buscamos el UUID del duelo activo en esta mesa (Pool o 3 Bandas)
             String uuidDuelo = db.dueloDao().obtenerUuidDueloActivoPorMesa(idMesa);
             if (uuidDuelo == null) {
                 uuidDuelo = db.dueloDao().obtenerUuidDueloActivoIndPorMesa(idMesa);
@@ -199,9 +196,6 @@ public class PedidoViewModel extends AndroidViewModel {
         });
     }
 
-    /**
-     * Inserta productos directos a la bolsa en la Arena Individual (3 Bandas).
-     */
     public void insertarMunicionBolsaIndPendiente(int idMesa, Producto producto) {
         executorService.execute(() -> {
             String uuid = db.dueloDao().obtenerUuidDueloActivoIndPorMesa(idMesa);
@@ -209,12 +203,9 @@ public class PedidoViewModel extends AndroidViewModel {
             DetallePedido dp = new DetallePedido();
             dp.idProducto = producto.idProducto;
             dp.idMesa = idMesa;
-            dp.idCliente = 0; // 0 = Identificador universal de "La Bolsa"
+            dp.idCliente = 0;
             dp.idDueloOrigen = uuid;
-
-            // CORRECCIÓN: Acceso directo a precioProducto
             dp.precioEnVenta = producto.precioProducto;
-
             dp.cantidad = 1;
             dp.estado = "PENDIENTE";
             dp.esApuesta = true;
@@ -225,8 +216,6 @@ public class PedidoViewModel extends AndroidViewModel {
         });
     }
 
-    // --- CONSULTAS DE DEUDAS PARA LA UI ---
-
     public LiveData<List<DetalleHistorialDuelo>> obtenerDetalleDeudaRegistrada(int idMesa) {
         return db.detallePedidoDao().obtenerDeudaPorMesa(idMesa);
     }
@@ -235,16 +224,10 @@ public class PedidoViewModel extends AndroidViewModel {
         return db.detallePedidoDao().obtenerDeudaPorMesaInd(idMesa);
     }
 
-
     public void marcarComoEntregadoACliente(int idDetalle, int idCliente, int idUsuario, String loginOp) {
         executorService.execute(() -> {
-            // Aquí le decimos a la BD:
-            // 1. Estado = ENTREGADO
-            // 2. idCliente = el cliente que seleccionamos en el círculo holográfico
-            // 3. esApuesta = 0 (false) -> ¡Esto saca el producto de la bolsa central!
-            // 4. idUsuarioEntrega = el mesero que hizo la acción
             db.detallePedidoDao().despacharPedidoAClienteEspecifico(idDetalle, idCliente, idUsuario);
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
-
 }

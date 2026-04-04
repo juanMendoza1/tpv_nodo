@@ -66,6 +66,8 @@ public class ArenaViewModel extends AndroidViewModel {
     private int idMesaActual;
     private List<Cliente> todosLosParticipantesDuelo = new ArrayList<>();
 
+    private final List<com.nodo.tpv.data.entities.BolaAnotada> historialBolasDueloActual = new java.util.ArrayList<>();
+
     // =========================================================================================
     // 2. ESTADOS ARENA POOL (MULTIEQUIPO)
     // =========================================================================================
@@ -114,6 +116,8 @@ public class ArenaViewModel extends AndroidViewModel {
     public List<Cliente> getTodosLosParticipantesDuelo() { return todosLosParticipantesDuelo; }
     public void setTipoJuego(String tipo) { tipoJuegoActual.postValue(tipo); }
 
+    private final List<com.nodo.tpv.data.entities.BolaAnotada> historialBolasDelDueloCompleto = new ArrayList<>();
+
     // =========================================================================================
     // RECUPERACIÓN Y GESTIÓN DE LA MESA
     // =========================================================================================
@@ -152,27 +156,97 @@ public class ArenaViewModel extends AndroidViewModel {
     }
 
     public void finalizarDueloCompleto(int idMesa, String tipoJuego) {
-        Runnable limpiezaInterfazCallback = () -> {
-            mainThreadHandler.post(() -> {
-                enModoDuelo.setValue(false);
-                uuidDueloActual = null;
-                tiempoInicioDuelo.setValue(0L);
-                mapaColoresDuelo.setValue(new HashMap<>());
-                scoresEquipos.setValue(new HashMap<>());
-                scoreAzul.setValue(0);
-                scoreRojo.setValue(0);
-                if (integrantesAzulCacheados != null) integrantesAzulCacheados.clear();
-                if (integrantesRojoCacheados != null) integrantesRojoCacheados.clear();
-                scoresIndividualesInd.setValue(new HashMap<>());
-                limpiarApuesta();
-                dbTrigger.setValue(System.currentTimeMillis());
-            });
-        };
+        // Captura de datos rápida desde el hilo principal (UI)
+        final String uuidFinal = uuidDueloActual;
+        final Map<Integer, Integer> scoreFinal = "POOL".equals(tipoJuego) ?
+                new java.util.HashMap<>(scoresEquipos.getValue()) : new java.util.HashMap<>(scoresIndividualesInd.getValue());
+        final Map<Integer, Integer> mapaColores = new java.util.HashMap<>(mapaColoresDuelo.getValue());
+
+        // Copiamos el historial que acumulamos en memoria
+        final List<com.nodo.tpv.data.entities.BolaAnotada> copiaHistorial = new java.util.ArrayList<>(historialBolasDueloActual);
+
+        if (uuidFinal == null) return;
+
+        executorService.execute(() -> {
+            try {
+                // 1. CONSTRUIR EL DTO
+                com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO reporte = new com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO();
+                reporte.idMesa = idMesa;
+                reporte.uuidDuelo = uuidFinal;
+                reporte.tipoJuego = tipoJuego;
+                reporte.timestampFin = System.currentTimeMillis();
+
+                java.util.Map<String, com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO.DetalleEquipo> detallesMap = new java.util.HashMap<>();
+                java.util.Map<String, Integer> resumenMap = new java.util.HashMap<>();
+
+                // 2. PROCESAR ESTADÍSTICAS DESDE LA MEMORIA
+                for (Integer colorId : new java.util.HashSet<>(mapaColores.values())) {
+                    String nombreE = obtenerNombreColor(colorId);
+
+                    com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO.DetalleEquipo ds = new com.nodo.tpv.data.dto.ReporteEstadisticoDueloDTO.DetalleEquipo();
+                    ds.puntosTotales = scoreFinal.getOrDefault(colorId, 0);
+                    ds.bolasAnotadas = new java.util.ArrayList<>();
+                    ds.puntosPositivos = 0;
+                    ds.cantidadMalas = 0;
+
+                    for (com.nodo.tpv.data.entities.BolaAnotada b : copiaHistorial) {
+                        if (b.colorEquipo == colorId) {
+                            if (b.numeroBola < 0) {
+                                ds.cantidadMalas++;
+                            } else {
+                                ds.puntosPositivos += b.numeroBola;
+                                ds.bolasAnotadas.add(b.numeroBola);
+                            }
+                        }
+                    }
+                    detallesMap.put(nombreE, ds);
+                    resumenMap.put(nombreE, ds.puntosTotales);
+                }
+
+                reporte.detalleEstadistico = detallesMap;
+                reporte.resumenGeneral = resumenMap;
+
+                // 3. ENVIAR EL ÚNICO JSON AL BACKEND
+                String jsonReporte = new com.google.gson.Gson().toJson(reporte);
+                registrarEventoOperativo("DUELO_FINALIZADO_ESTADISTICO", jsonReporte);
+
+            } catch (Exception e) {
+                android.util.Log.e("ARENA_FIN", "Error al generar el resumen final", e);
+            }
+
+            // 4. LIMPIEZA TOTAL
+            historialBolasDueloActual.clear(); // Vaciamos la memoria para el próximo juego
+            realizarLimpiezaLocal(idMesa, tipoJuego);
+        });
+    }
+
+    private String obtenerNombreColor(int color) {
+        // Mapeo exacto de tus colores (puedes añadir más según tus constantes)
+        if (color == -16718337) return "AZUL";
+        if (color == -3916) return "ROJO";
+        if (color == -10929) return "AMARILLO";
+        if (color == -11751600) return "VERDE";
+        return "EQUIPO_" + color;
+    }
+
+    private void realizarLimpiezaLocal(int idMesa, String tipoJuego) {
+        Runnable limpiezaCallback = () -> mainThreadHandler.post(() -> {
+            enModoDuelo.setValue(false);
+            uuidDueloActual = null;
+            tiempoInicioDuelo.setValue(0L);
+            mapaColoresDuelo.setValue(new HashMap<>());
+            scoresEquipos.setValue(new HashMap<>());
+            scoreAzul.setValue(0);
+            scoreRojo.setValue(0);
+            scoresIndividualesInd.setValue(new HashMap<>());
+            limpiarApuesta();
+            dbTrigger.setValue(System.currentTimeMillis());
+        });
 
         if ("POOL".equals(tipoJuego)) {
-            dueloRepository.finalizarDueloPool(idMesa, limpiezaInterfazCallback);
-        } else if ("3BANDAS".equals(tipoJuego)) {
-            dueloRepository.finalizarDueloIndividual(idMesa, limpiezaInterfazCallback);
+            dueloRepository.finalizarDueloPool(idMesa, limpiezaCallback);
+        } else {
+            dueloRepository.finalizarDueloIndividual(idMesa, limpiezaCallback);
         }
     }
 
@@ -750,15 +824,45 @@ public class ArenaViewModel extends AndroidViewModel {
         });
     }
 
-    public void anotarBolaDuelo(String uuidActual, int colorEquipo, int numeroBola) {
+    public void anotarBolaDuelo(String uuidDuelo, int colorEquipo, int numeroBola) {
         executorService.execute(() -> {
-            db.bolaDueloDao().insertarBola(new BolaAnotada(uuidActual, colorEquipo, numeroBola));
+            // 1. Guardar en Room para que la UI se actualice
+            com.nodo.tpv.data.entities.BolaAnotada bola = new com.nodo.tpv.data.entities.BolaAnotada(uuidDuelo, colorEquipo, numeroBola);
+            db.bolaDueloDao().insertarBola(bola);
+
+            // 2. 🔥 GUARDAR EN MEMORIA (Para el reporte final)
+            historialBolasDueloActual.add(bola);
+
+            // Refrescar UI
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 
-    public void revertirBolaDuelo(String uuidActual, int numeroBola) {
+    private void registrarEventoOperativo(String tipo, String json) {
+        com.nodo.tpv.data.entities.ActividadOperativaLocal evento = new com.nodo.tpv.data.entities.ActividadOperativaLocal();
+        evento.eventoId = java.util.UUID.randomUUID().toString();
+        evento.tipoEvento = tipo;
+        evento.fechaDispositivo = System.currentTimeMillis();
+        evento.estadoSync = "PENDIENTE";
+        evento.detallesJson = json;
+
+        db.actividadOperativaLocalDao().insertar(evento);
+        dispararSincronizacion();
+    }
+
+    /**
+     * Rebién importante: Si se borra una bola (error), también la quitamos del historial.
+     */
+    public void revertirBolaDuelo(String uuid, int numero) {
         executorService.execute(() -> {
-            db.bolaDueloDao().eliminarBola(uuidActual, numeroBola);
+            // FIX: Nombre del método corregido para que coincida con tu DAO
+            db.bolaDueloDao().eliminarBola(uuid, numero);
+
+            // También lo quitamos de la memoria del reporte si existe
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                historialBolasDelDueloCompleto.removeIf(b -> b.numeroBola == numero);
+            }
+            mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }
 

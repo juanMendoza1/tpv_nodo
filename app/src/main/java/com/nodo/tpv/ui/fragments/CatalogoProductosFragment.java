@@ -213,13 +213,21 @@ public class CatalogoProductosFragment extends Fragment {
 
         btnFinalizarSeleccion.setOnClickListener(v -> {
             if (idClienteSeleccionado == 0) {
+                // Caso: Bolsa del duelo (ya lo manejas en el ViewModel)
                 requireActivity().getSupportFragmentManager().popBackStack();
             } else {
                 if (!carritoClienteLocal.isEmpty()) {
                     for (ItemCarritoLocal item : carritoClienteLocal) {
-                        pedidoViewModel.insertarConsumoDirectoEntregado(idClienteSeleccionado, item.producto, item.cantidad);
+                        // 🔥 CORRECCIÓN: Agregamos "idMesaActual" como segundo parámetro
+                        // Ahora cumple con los 4 argumentos: idCliente, idMesa, producto, cantidad
+                        pedidoViewModel.insertarConsumoDirectoEntregado(
+                                idClienteSeleccionado,
+                                idMesaActual,
+                                item.producto,
+                                item.cantidad
+                        );
                     }
-                    Toast.makeText(getContext(), "Productos cargados al cliente \u2705", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "Productos cargados al cliente ✅", Toast.LENGTH_SHORT).show();
                     requireActivity().getSupportFragmentManager().popBackStack();
                 } else {
                     requireActivity().getSupportFragmentManager().popBackStack();
