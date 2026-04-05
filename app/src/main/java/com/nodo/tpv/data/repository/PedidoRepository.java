@@ -2,6 +2,7 @@ package com.nodo.tpv.data.repository;
 
 import android.app.Application;
 import android.content.Context;
+import android.util.Log;
 
 import androidx.lifecycle.LiveData;
 import androidx.work.Constraints;
@@ -10,6 +11,7 @@ import androidx.work.NetworkType;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;
 
+import com.google.gson.Gson;
 import com.nodo.tpv.data.dao.ActividadOperativaLocalDao;
 import com.nodo.tpv.data.dao.ClienteDao;
 import com.nodo.tpv.data.dao.DetallePedidoDao;
@@ -24,11 +26,14 @@ import com.nodo.tpv.data.entities.Producto;
 import com.nodo.tpv.data.entities.VentaDetalleHistorial;
 import com.nodo.tpv.data.entities.VentaHistorial;
 import com.nodo.tpv.data.sync.OperatividadSyncWorker;
+import com.nodo.tpv.util.SessionManager;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -40,9 +45,8 @@ public class PedidoRepository {
     private final DueloTemporalIndDao dueloTemporalIndDao;
     private final ActividadOperativaLocalDao actividadOperativaLocalDao;
     private final ExecutorService executorService;
-
-    // Guardamos el contexto a nivel global de la clase para el WorkManager
     private final Context context;
+    private final Gson gson;
 
     public PedidoRepository(Application application) {
         AppDatabase db = AppDatabase.getInstance(application);
@@ -51,15 +55,13 @@ public class PedidoRepository {
         this.clienteDao = db.clienteDao();
         this.dueloTemporalIndDao = db.dueloTemporalIndDao();
         this.actividadOperativaLocalDao = db.actividadOperativaLocalDao();
-
         this.context = application.getApplicationContext();
-
-        // Hilo dedicado a las transacciones de ventas y pedidos
         this.executorService = Executors.newFixedThreadPool(4);
+        this.gson = new Gson();
     }
 
     // ==========================================
-    // LÓGICA DE BADGE Y PENDIENTES (UI EN TIEMPO REAL)
+    // LÓGICA DE BADGE Y PENDIENTES
     // ==========================================
 
     public LiveData<Integer> observarConteoPendientesMesa(int idMesa) {
@@ -71,13 +73,12 @@ public class PedidoRepository {
     }
 
     // ==========================================
-    // LÓGICA DE LA "BOLSA" DE MUNICIÓN (DUELOS)
+    // LÓGICA DE LA "BOLSA" (ARENA / DUELOS)
     // ==========================================
 
     public void insertarMunicionDueloPendiente(int idMesa, Producto producto, int cantidad, String uuidEnMemoria, Runnable onComplete) {
         executorService.execute(() -> {
             String uuid = uuidEnMemoria;
-
             if (uuid == null) uuid = dueloTemporalIndDao.obtenerIdDueloPorMesaSincrono(idMesa);
             if (uuid == null) uuid = dueloDao.obtenerUuidDueloActivoPorMesa(idMesa);
 
@@ -89,21 +90,34 @@ public class PedidoRepository {
                     dp.idDueloOrigen = uuid;
                     dp.precioEnVenta = producto.getPrecioProducto();
                     dp.cantidad = 1;
-                    dp.idCliente = 0; // 0 = La Bolsa
+                    dp.idCliente = 0; // Bolsa
                     dp.estado = "PENDIENTE";
                     dp.esApuesta = true;
                     dp.fechaLong = System.currentTimeMillis();
                     detallePedidoDao.insertarDetalle(dp);
                 }
 
-                // 🔥 GATILLO: Registrar MUNICIÓN_AGREGADA
-                ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
-                pendiente.eventoId = java.util.UUID.randomUUID().toString();
-                pendiente.tipoEvento = "MUNICION_AGREGADA";
-                pendiente.fechaDispositivo = System.currentTimeMillis();
-                pendiente.estadoSync = "PENDIENTE";
-                pendiente.detallesJson = "{ \"idMesa\": " + idMesa + ", \"idProducto\": " + producto.idProducto + ", \"cantidad\": " + cantidad + " }";
-                actividadOperativaLocalDao.insertar(pendiente);
+                // 🔥 REGISTRO ESTÁNDAR: "DESPACHO_MESA" para que React lo vea al instante
+                ActividadOperativaLocal evento = new ActividadOperativaLocal();
+                evento.eventoId = UUID.randomUUID().toString();
+                evento.tipoEvento = "DESPACHO_MESA";
+                evento.fechaDispositivo = System.currentTimeMillis();
+                evento.estadoSync = "PENDIENTE";
+
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("idMesa", idMesa);
+                payload.put("uuidDuelo", uuid);
+
+                List<Map<String, Object>> prodList = new ArrayList<>();
+                Map<String, Object> pMap = new HashMap<>();
+                pMap.put("nombre", producto.nombreProducto);
+                pMap.put("precio", producto.getPrecioProducto());
+                pMap.put("cantidad", cantidad);
+                prodList.add(pMap);
+                payload.put("productos", prodList);
+
+                evento.detallesJson = gson.toJson(payload);
+                actividadOperativaLocalDao.insertar(evento);
                 dispararSincronizacion();
             }
             if (onComplete != null) onComplete.run();
@@ -114,72 +128,18 @@ public class PedidoRepository {
         executorService.execute(() -> {
             detallePedidoDao.despacharPedidoLocal(idDetalle, "ENTREGADO", idUsuario);
 
-            // 🔥 GATILLO: Registrar DESPACHO INDIVIDUAL
-            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
-            pendiente.eventoId = java.util.UUID.randomUUID().toString();
-            pendiente.tipoEvento = "DESPACHO";
-            pendiente.fechaDispositivo = System.currentTimeMillis();
-            pendiente.estadoSync = "PENDIENTE";
-            pendiente.detallesJson = "{ \"idDetalle\": " + idDetalle + ", \"idUsuario\": " + idUsuario + " }";
-            actividadOperativaLocalDao.insertar(pendiente);
-            dispararSincronizacion();
+            ActividadOperativaLocal evento = new ActividadOperativaLocal();
+            evento.eventoId = UUID.randomUUID().toString();
+            evento.tipoEvento = "DESPACHO";
+            evento.fechaDispositivo = System.currentTimeMillis();
+            evento.estadoSync = "PENDIENTE";
 
-            if (onComplete != null) onComplete.run();
-        });
-    }
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("idDetalle", idDetalle);
+            payload.put("idUsuarioSlot", idUsuario);
+            evento.detallesJson = gson.toJson(payload);
 
-    public void despacharTodoLaMesa(int idMesa, int idUsuario, Runnable onComplete) {
-        executorService.execute(() -> {
-            List<DetallePedido> pendientes = detallePedidoDao.obtenerPendientesMesaSincrono(idMesa);
-            if (pendientes != null && !pendientes.isEmpty()) {
-                for (DetallePedido dp : pendientes) {
-                    detallePedidoDao.despacharPedidoLocal(dp.idDetalle, "ENTREGADO", idUsuario);
-                }
-
-                // 🔥 GATILLO: Registrar DESPACHO MASIVO
-                ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
-                pendiente.eventoId = java.util.UUID.randomUUID().toString();
-                pendiente.tipoEvento = "DESPACHO_MESA";
-                pendiente.fechaDispositivo = System.currentTimeMillis();
-                pendiente.estadoSync = "PENDIENTE";
-                pendiente.detallesJson = "{ \"idMesa\": " + idMesa + ", \"idUsuario\": " + idUsuario + ", \"cantidadDespachada\": " + pendientes.size() + " }";
-                actividadOperativaLocalDao.insertar(pendiente);
-                dispararSincronizacion();
-            }
-            if (onComplete != null) onComplete.run();
-        });
-    }
-
-    public void cancelarDetallePendiente(int idDetalle, Runnable onComplete) {
-        executorService.execute(() -> {
-            detallePedidoDao.cancelarDetallePorId(idDetalle);
-
-            // 🔥 GATILLO: Registrar CANCELACIÓN INDIVIDUAL
-            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
-            pendiente.eventoId = java.util.UUID.randomUUID().toString();
-            pendiente.tipoEvento = "CANCELACION_DETALLE";
-            pendiente.fechaDispositivo = System.currentTimeMillis();
-            pendiente.estadoSync = "PENDIENTE";
-            pendiente.detallesJson = "{ \"idDetalle\": " + idDetalle + " }";
-            actividadOperativaLocalDao.insertar(pendiente);
-            dispararSincronizacion();
-
-            if (onComplete != null) onComplete.run();
-        });
-    }
-
-    public void cancelarMunicionPendienteMesa(int idMesa, Runnable onComplete) {
-        executorService.execute(() -> {
-            detallePedidoDao.cancelarTodosLosPendientesMesa(idMesa);
-
-            // 🔥 GATILLO: Registrar CANCELACIÓN DE MESA COMPLETA
-            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
-            pendiente.eventoId = java.util.UUID.randomUUID().toString();
-            pendiente.tipoEvento = "CANCELACION_MESA";
-            pendiente.fechaDispositivo = System.currentTimeMillis();
-            pendiente.estadoSync = "PENDIENTE";
-            pendiente.detallesJson = "{ \"idMesa\": " + idMesa + " }";
-            actividadOperativaLocalDao.insertar(pendiente);
+            actividadOperativaLocalDao.insertar(evento);
             dispararSincronizacion();
 
             if (onComplete != null) onComplete.run();
@@ -187,14 +147,14 @@ public class PedidoRepository {
     }
 
     // ==========================================
-    // CONSUMO DIRECTO Y CIERRE DE CUENTA
+    // CONSUMO DIRECTO (LISTA CLIENTES)
     // ==========================================
 
     public void insertarConsumoDirectoEntregado(int idCliente, int idMesa, Producto producto, int cantidad, Runnable onComplete) {
         executorService.execute(() -> {
             DetallePedido dp = new DetallePedido();
             dp.idCliente = idCliente;
-            dp.idMesa = idMesa; // 🔥 Agregamos la mesa
+            dp.idMesa = idMesa;
             dp.idProducto = producto.idProducto;
             dp.cantidad = cantidad;
             dp.precioEnVenta = producto.getPrecioProducto();
@@ -203,19 +163,32 @@ public class PedidoRepository {
             dp.fechaLong = System.currentTimeMillis();
             detallePedidoDao.insertarDetalle(dp);
 
-            // 🔥 GATILLO UNIVERSAL: Registro de Pedido Directo
-            ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
-            pendiente.eventoId = java.util.UUID.randomUUID().toString();
-            pendiente.tipoEvento = "PEDIDO_DIRECTO";
-            pendiente.fechaDispositivo = System.currentTimeMillis();
-            pendiente.estadoSync = "PENDIENTE";
+            // 🔥 REGISTRO ESTÁNDAR: "DESPACHO_MESA" para evitar duplicidad y asegurar lectura en React
+            ActividadOperativaLocal evento = new ActividadOperativaLocal();
+            evento.eventoId = "VENTA-" + System.currentTimeMillis() + "-" + idCliente;
+            evento.tipoEvento = "DESPACHO_MESA";
+            evento.fechaDispositivo = System.currentTimeMillis();
+            evento.estadoSync = "PENDIENTE";
 
-            // JSON súper detallado para el backend
-            pendiente.detallesJson = String.format(Locale.US,
-                    "{ \"idCliente\": %d, \"idMesa\": %d, \"idProducto\": %d, \"nombre\": \"%s\", \"cantidad\": %d, \"precio\": %s }",
-                    idCliente, idMesa, producto.idProducto, producto.nombreProducto, cantidad, producto.precioProducto.toString());
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("idMesa", idMesa);
+            payload.put("idCliente", idCliente);
 
-            actividadOperativaLocalDao.insertar(pendiente);
+            SessionManager session = new SessionManager(context);
+            if (session.obtenerUsuario() != null) {
+                payload.put("idUsuarioSlot", session.obtenerUsuario().idUsuario);
+            }
+
+            List<Map<String, Object>> prodList = new ArrayList<>();
+            Map<String, Object> pMap = new HashMap<>();
+            pMap.put("nombre", producto.nombreProducto);
+            pMap.put("precio", producto.getPrecioProducto());
+            pMap.put("cantidad", cantidad);
+            prodList.add(pMap);
+            payload.put("productos", prodList);
+
+            evento.detallesJson = gson.toJson(payload);
+            actividadOperativaLocalDao.insertar(evento);
             dispararSincronizacion();
 
             if (onComplete != null) onComplete.run();
@@ -228,7 +201,6 @@ public class PedidoRepository {
             List<DetalleConNombre> consumos = detallePedidoDao.obtenerDetalleConNombresSincrono(idCliente);
 
             if (total != null && total.compareTo(BigDecimal.ZERO) > 0 && consumos != null) {
-                // A. Venta Padre
                 VentaHistorial vH = new VentaHistorial();
                 vH.idCliente = idCliente;
                 vH.nombreCliente = alias;
@@ -239,7 +211,6 @@ public class PedidoRepository {
                 vH.fotoComprobante = fotoBase64;
                 long idVentaPadre = detallePedidoDao.insertarVentaHistorial(vH);
 
-                // B. Migrar detalles
                 List<VentaDetalleHistorial> listaDetallesHistorial = new ArrayList<>();
                 for (DetalleConNombre item : consumos) {
                     VentaDetalleHistorial vDet = new VentaDetalleHistorial();
@@ -252,18 +223,22 @@ public class PedidoRepository {
                 }
                 detallePedidoDao.insertarDetallesHistorial(listaDetallesHistorial);
 
-                // C. Limpieza
                 detallePedidoDao.borrarCuentaCliente(idCliente);
                 clienteDao.eliminarPorId(idCliente);
 
-                // 🔥 GATILLO: CIERRE_CUENTA
-                ActividadOperativaLocal pendiente = new ActividadOperativaLocal();
-                pendiente.eventoId = java.util.UUID.randomUUID().toString();
-                pendiente.tipoEvento = "CIERRE_CUENTA";
-                pendiente.fechaDispositivo = System.currentTimeMillis();
-                pendiente.estadoSync = "PENDIENTE";
-                pendiente.detallesJson = "{ \"idCliente\": " + idCliente + ", \"metodoPago\": \"" + metodo + "\", \"total\": " + total + " }";
-                actividadOperativaLocalDao.insertar(pendiente);
+                ActividadOperativaLocal evento = new ActividadOperativaLocal();
+                evento.eventoId = UUID.randomUUID().toString();
+                evento.tipoEvento = "CIERRE_CUENTA";
+                evento.fechaDispositivo = System.currentTimeMillis();
+                evento.estadoSync = "PENDIENTE";
+
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("idCliente", idCliente);
+                payload.put("total", total);
+                payload.put("metodoPago", metodo);
+                evento.detallesJson = gson.toJson(payload);
+
+                actividadOperativaLocalDao.insertar(evento);
                 dispararSincronizacion();
 
                 if (onComplete != null) onComplete.run();
@@ -271,30 +246,43 @@ public class PedidoRepository {
         });
     }
 
-    // ==========================================
-    // GETTERS PARA UI
-    // ==========================================
+    public void cancelarDetallePendiente(int idDetalle, Runnable onComplete) {
+        executorService.execute(() -> {
+            detallePedidoDao.cancelarDetallePorId(idDetalle);
+            ActividadOperativaLocal evento = new ActividadOperativaLocal();
+            evento.eventoId = UUID.randomUUID().toString();
+            evento.tipoEvento = "CANCELACION_DETALLE";
+            evento.fechaDispositivo = System.currentTimeMillis();
+            evento.estadoSync = "PENDIENTE";
+            evento.detallesJson = "{ \"idDetalle\": " + idDetalle + " }";
+            actividadOperativaLocalDao.insertar(evento);
+            dispararSincronizacion();
+            if (onComplete != null) onComplete.run();
+        });
+    }
+
+    public void cancelarMunicionPendienteMesa(int idMesa, Runnable onComplete) {
+        executorService.execute(() -> {
+            detallePedidoDao.cancelarTodosLosPendientesMesa(idMesa);
+            ActividadOperativaLocal evento = new ActividadOperativaLocal();
+            evento.eventoId = UUID.randomUUID().toString();
+            evento.tipoEvento = "CANCELACION_MESA";
+            evento.fechaDispositivo = System.currentTimeMillis();
+            evento.estadoSync = "PENDIENTE";
+            evento.detallesJson = "{ \"idMesa\": " + idMesa + " }";
+            actividadOperativaLocalDao.insertar(evento);
+            dispararSincronizacion();
+            if (onComplete != null) onComplete.run();
+        });
+    }
 
     public LiveData<List<VentaHistorial>> obtenerTodoElHistorial() {
         return detallePedidoDao.obtenerTodoElHistorial();
     }
 
     private void dispararSincronizacion() {
-        // 1. Configuramos que SÓLO se ejecute si hay conexión a internet
-        Constraints constraints = new Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build();
-
-        // 2. Creamos la petición de trabajo de una sola vez
-        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(OperatividadSyncWorker.class)
-                .setConstraints(constraints)
-                .build();
-
-        // 3. Lo encolamos de forma ÚNICA.
-        WorkManager.getInstance(this.context).enqueueUniqueWork(
-                "SyncOperatividadInmediata",
-                ExistingWorkPolicy.KEEP,
-                syncRequest
-        );
+        Constraints constraints = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
+        OneTimeWorkRequest syncRequest = new OneTimeWorkRequest.Builder(OperatividadSyncWorker.class).setConstraints(constraints).build();
+        WorkManager.getInstance(this.context).enqueueUniqueWork("SyncOperatividadInmediata", ExistingWorkPolicy.KEEP, syncRequest);
     }
 }
