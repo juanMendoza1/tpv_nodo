@@ -97,27 +97,10 @@ public class PedidoRepository {
                     detallePedidoDao.insertarDetalle(dp);
                 }
 
-                // 🔥 REGISTRO ESTÁNDAR: "DESPACHO_MESA" para que React lo vea al instante
-                ActividadOperativaLocal evento = new ActividadOperativaLocal();
-                evento.eventoId = UUID.randomUUID().toString();
-                evento.tipoEvento = "DESPACHO_MESA";
-                evento.fechaDispositivo = System.currentTimeMillis();
-                evento.estadoSync = "PENDIENTE";
+                // 🔥 SE ELIMINÓ EL EVENTO PREMATURO AQUÍ PARA EVITAR DUPLICADOS EN LA WEB.
+                // La Caja Negra ahora se enterará del producto ÚNICAMENTE cuando el
+                // operario presione "Entregar" (que dispara marcarComoEntregadoLocal).
 
-                Map<String, Object> payload = new HashMap<>();
-                payload.put("idMesa", idMesa);
-                payload.put("uuidDuelo", uuid);
-
-                List<Map<String, Object>> prodList = new ArrayList<>();
-                Map<String, Object> pMap = new HashMap<>();
-                pMap.put("nombre", producto.nombreProducto);
-                pMap.put("precio", producto.getPrecioProducto());
-                pMap.put("cantidad", cantidad);
-                prodList.add(pMap);
-                payload.put("productos", prodList);
-
-                evento.detallesJson = gson.toJson(payload);
-                actividadOperativaLocalDao.insertar(evento);
                 dispararSincronizacion();
             }
             if (onComplete != null) onComplete.run();
@@ -126,21 +109,50 @@ public class PedidoRepository {
 
     public void marcarComoEntregadoLocal(int idDetalle, int idUsuario, Runnable onComplete) {
         executorService.execute(() -> {
-            detallePedidoDao.despacharPedidoLocal(idDetalle, "ENTREGADO", idUsuario);
+            try {
+                // 1. Buscamos los datos completos del pedido (Mesa + Producto)
+                DetalleConNombre detalleCompleto = detallePedidoDao.obtenerDetalleCompletoPorId(idDetalle);
 
-            ActividadOperativaLocal evento = new ActividadOperativaLocal();
-            evento.eventoId = UUID.randomUUID().toString();
-            evento.tipoEvento = "DESPACHO";
-            evento.fechaDispositivo = System.currentTimeMillis();
-            evento.estadoSync = "PENDIENTE";
+                // 2. Lo despachamos físicamente en la BD local
+                detallePedidoDao.despacharPedidoLocal(idDetalle, "ENTREGADO", idUsuario);
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("idDetalle", idDetalle);
-            payload.put("idUsuarioSlot", idUsuario);
-            evento.detallesJson = gson.toJson(payload);
+                if (detalleCompleto != null && detalleCompleto.detallePedido != null) {
+                    DetallePedido pedidoLocal = detalleCompleto.detallePedido;
 
-            actividadOperativaLocalDao.insertar(evento);
-            dispararSincronizacion();
+                    // 3. Creamos el Evento para la Caja Negra
+                    ActividadOperativaLocal evento = new ActividadOperativaLocal();
+                    evento.eventoId = UUID.randomUUID().toString();
+                    evento.tipoEvento = "DESPACHO_MESA"; // 🔥 Estándar para React
+                    evento.fechaDispositivo = System.currentTimeMillis();
+                    evento.estadoSync = "PENDIENTE";
+
+                    // 4. Armamos el JSON completo
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("idDetalle", idDetalle);
+                    payload.put("idUsuarioSlot", idUsuario);
+
+                    // ¡Solución al "N/A"!
+                    if (pedidoLocal.idMesa > 0) {
+                        payload.put("idMesa", pedidoLocal.idMesa);
+                    }
+
+                    // ¡Solución al "Consumo Registrado"!
+                    List<Map<String, Object>> prodList = new ArrayList<>();
+                    Map<String, Object> pMap = new HashMap<>();
+                    pMap.put("nombre", detalleCompleto.nombreProducto);
+                    pMap.put("precio", pedidoLocal.precioEnVenta);
+                    pMap.put("cantidad", pedidoLocal.cantidad);
+                    prodList.add(pMap);
+
+                    payload.put("productos", prodList);
+                    evento.detallesJson = gson.toJson(payload);
+
+                    actividadOperativaLocalDao.insertar(evento);
+                    dispararSincronizacion();
+                }
+            } catch (Exception e) {
+                Log.e("SYNC_ERROR", "Error armando evento de despacho: " + e.getMessage());
+            }
 
             if (onComplete != null) onComplete.run();
         });
@@ -278,6 +290,58 @@ public class PedidoRepository {
 
     public LiveData<List<VentaHistorial>> obtenerTodoElHistorial() {
         return detallePedidoDao.obtenerTodoElHistorial();
+    }
+
+    // 🔥 NUEVO MÉTODO: Despacha a un cliente específico dentro de un duelo y avisa a la Web
+    public void marcarComoEntregadoAClienteLocal(int idDetalle, int idCliente, int idUsuario, Runnable onComplete) {
+        executorService.execute(() -> {
+            try {
+                // 1. Buscamos los datos completos del pedido (Mesa + Producto)
+                DetalleConNombre detalleCompleto = detallePedidoDao.obtenerDetalleCompletoPorId(idDetalle);
+
+                // 2. Lo despachamos físicamente asignándolo a ese cliente específico
+                detallePedidoDao.despacharPedidoAClienteEspecifico(idDetalle, idCliente, idUsuario);
+
+                if (detalleCompleto != null && detalleCompleto.detallePedido != null) {
+                    DetallePedido pedidoLocal = detalleCompleto.detallePedido;
+
+                    // 3. Creamos el Evento para la Caja Negra
+                    ActividadOperativaLocal evento = new ActividadOperativaLocal();
+                    evento.eventoId = UUID.randomUUID().toString();
+                    evento.tipoEvento = "DESPACHO_MESA"; // Usamos el estándar para que React lo entienda
+                    evento.fechaDispositivo = System.currentTimeMillis();
+                    evento.estadoSync = "PENDIENTE";
+
+                    // 4. Armamos el JSON completo sumando el idCliente
+                    Map<String, Object> payload = new HashMap<>();
+                    payload.put("idDetalle", idDetalle);
+                    payload.put("idUsuarioSlot", idUsuario);
+                    payload.put("idCliente", idCliente); // 🔥 Dato clave para el duelo
+
+                    if (pedidoLocal.idMesa > 0) {
+                        payload.put("idMesa", pedidoLocal.idMesa);
+                    }
+
+                    List<Map<String, Object>> prodList = new ArrayList<>();
+                    Map<String, Object> pMap = new HashMap<>();
+                    pMap.put("nombre", detalleCompleto.nombreProducto);
+                    pMap.put("precio", pedidoLocal.precioEnVenta);
+                    pMap.put("cantidad", pedidoLocal.cantidad);
+                    prodList.add(pMap);
+
+                    payload.put("productos", prodList);
+                    evento.detallesJson = gson.toJson(payload);
+
+                    // 5. Insertamos y disparamos la sincronización por WebSocket
+                    actividadOperativaLocalDao.insertar(evento);
+                    dispararSincronizacion();
+                }
+            } catch (Exception e) {
+                Log.e("SYNC_ERROR", "Error armando evento de despacho a cliente: " + e.getMessage());
+            }
+
+            if (onComplete != null) onComplete.run();
+        });
     }
 
     private void dispararSincronizacion() {

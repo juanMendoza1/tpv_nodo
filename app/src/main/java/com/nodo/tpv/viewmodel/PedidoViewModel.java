@@ -143,8 +143,9 @@ public class PedidoViewModel extends AndroidViewModel {
             List<DetallePedido> pendientes = db.detallePedidoDao().obtenerPendientesMesaSincrono(idMesa);
             if (pendientes == null || pendientes.isEmpty()) return;
 
+            // 🔥 Usamos el repositorio para generar un evento web por CADA producto
             for (DetallePedido dp : pendientes) {
-                db.detallePedidoDao().despacharPedidoLocal(dp.idDetalle, "ENTREGADO", idUsuario);
+                pedidoRepository.marcarComoEntregadoLocal(dp.idDetalle, idUsuario, null);
             }
 
             dispararSincronizacionStock();
@@ -225,8 +226,9 @@ public class PedidoViewModel extends AndroidViewModel {
     }
 
     public void marcarComoEntregadoACliente(int idDetalle, int idCliente, int idUsuario, String loginOp) {
-        executorService.execute(() -> {
-            db.detallePedidoDao().despacharPedidoAClienteEspecifico(idDetalle, idCliente, idUsuario);
+        // 🔥 Ahora llamamos a nuestro Repositorio Inteligente en vez del DAO directo
+        pedidoRepository.marcarComoEntregadoAClienteLocal(idDetalle, idCliente, idUsuario, () -> {
+            dispararSincronizacionStock();
             mainThreadHandler.post(() -> dbTrigger.setValue(System.currentTimeMillis()));
         });
     }

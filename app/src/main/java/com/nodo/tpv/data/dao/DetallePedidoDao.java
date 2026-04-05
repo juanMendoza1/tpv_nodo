@@ -231,4 +231,9 @@ public interface DetallePedidoDao {
     @Query("UPDATE detalle_pedido SET estado = 'REGISTRADO', idCliente = :idCliente, esApuesta = 0, idUsuarioEntrega = :idUsuario WHERE idDetalle = :idDetalle")
     void despacharPedidoAClienteEspecifico(int idDetalle, int idCliente, int idUsuario);
 
+    @Query("SELECT det.*, prod.nombreProducto FROM detalle_pedido det " +
+            "INNER JOIN producto prod ON det.idProducto = prod.idProducto " +
+            "WHERE det.idDetalle = :idDetalle")
+    DetalleConNombre obtenerDetalleCompletoPorId(int idDetalle);
+
 }
