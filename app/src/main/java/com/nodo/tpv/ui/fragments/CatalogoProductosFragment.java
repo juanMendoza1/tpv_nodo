@@ -214,17 +214,21 @@ public class CatalogoProductosFragment extends Fragment {
 
         btnFinalizarSeleccion.setOnClickListener(v -> {
             if (idClienteSeleccionado == 0) {
+                // Caso: Bolsa del duelo (ya lo manejas en el ViewModel)
                 requireActivity().getSupportFragmentManager().popBackStack();
             } else {
                 if (!carritoClienteLocal.isEmpty()) {
-                    // 1. Guardamos localmente en Room
+                    // 1. Guardar el consumo localmente en la base de datos de la tablet
                     for (ItemCarritoLocal item : carritoClienteLocal) {
                         pedidoViewModel.insertarConsumoDirectoEntregado(
-                                idClienteSeleccionado, idMesaActual, item.producto, item.cantidad
+                                idClienteSeleccionado,
+                                idMesaActual,
+                                item.producto,
+                                item.cantidad
                         );
                     }
 
-                    // 🔥 2. EMPAQUETAMOS LOS PRODUCTOS PARA LA CAJA NEGRA Y EL WEBSOCKET
+                    // 🔥 2. REGISTRAR EN LA CAJA NEGRA Y DISPARAR WEBSOCKET AL INSTANTE
                     new Thread(() -> {
                         try {
                             java.util.Map<String, Object> payload = new java.util.HashMap<>();
@@ -236,7 +240,7 @@ public class CatalogoProductosFragment extends Fragment {
                                 payload.put("idUsuarioSlot", session.obtenerUsuario().idUsuario);
                             }
 
-                            // 📦 Extraemos los productos y sus precios
+                            // Empaquetamos los productos para que el Backend sepa qué se vendió
                             java.util.List<java.util.Map<String, Object>> listaProductos = new java.util.ArrayList<>();
                             for (ItemCarritoLocal item : carritoClienteLocal) {
                                 java.util.Map<String, Object> p = new java.util.HashMap<>();
@@ -245,26 +249,31 @@ public class CatalogoProductosFragment extends Fragment {
                                 p.put("cantidad", item.cantidad);
                                 listaProductos.add(p);
                             }
-                            payload.put("productos", listaProductos); // ¡Ahora el backend sí sabe qué se vendió!
+                            payload.put("productos", listaProductos);
 
+                            // Insertamos el evento
                             com.nodo.tpv.data.entities.ActividadOperativaLocal evento = new com.nodo.tpv.data.entities.ActividadOperativaLocal();
                             evento.eventoId = java.util.UUID.randomUUID().toString();
-                            evento.tipoEvento = "DESPACHO_MESA";
+                            evento.tipoEvento = "DESPACHO_MESA"; // Esto gatilla la actualización visual
                             evento.fechaDispositivo = System.currentTimeMillis();
                             evento.estadoSync = "PENDIENTE";
                             evento.detallesJson = new com.google.gson.Gson().toJson(payload);
 
                             AppDatabase.getInstance(requireContext()).actividadOperativaLocalDao().insertar(evento);
 
-                            // 3. Disparamos la subida inmediata
+                            // Despertamos al sincronizador
                             androidx.work.Constraints constraints = new androidx.work.Constraints.Builder()
                                     .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build();
+
                             androidx.work.OneTimeWorkRequest syncRequest = new androidx.work.OneTimeWorkRequest.Builder(com.nodo.tpv.data.sync.OperatividadSyncWorker.class)
                                     .setConstraints(constraints).build();
-                            androidx.work.WorkManager.getInstance(requireContext())
-                                    .enqueueUniqueWork("SyncVentaInmediata", androidx.work.ExistingWorkPolicy.KEEP, syncRequest);
 
-                        } catch (Exception e) {}
+                            androidx.work.WorkManager.getInstance(requireContext())
+                                    .enqueueUniqueWork("SyncOperatividadInmediata", androidx.work.ExistingWorkPolicy.KEEP, syncRequest);
+
+                        } catch (Exception e) {
+                            android.util.Log.e("SYNC_VENTA", "Error disparando sync", e);
+                        }
                     }).start();
 
                     Toast.makeText(getContext(), "Productos cargados al cliente ✅", Toast.LENGTH_SHORT).show();

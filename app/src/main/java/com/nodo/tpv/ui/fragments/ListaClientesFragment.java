@@ -424,7 +424,35 @@ public class ListaClientesFragment extends Fragment {
         dv.findViewById(R.id.btnGuardar).setOnClickListener(v -> {
             String a = etA.getText().toString().trim();
             if (!a.isEmpty()) {
+                // 1. Guarda el cliente localmente
                 clienteViewModel.guardarCliente(a, act.getText().toString(), idMesaActual);
+
+                // 🔥 2. AVISAMOS A LA CAJA NEGRA QUE LLEGÓ ALGUIEN A LA MESA (Para la vista Universal)
+                new Thread(() -> {
+                    try {
+                        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                        payload.put("idMesa", idMesaActual);
+                        payload.put("nombreCliente", a); // El alias que acaban de escribir
+
+                        com.nodo.tpv.data.entities.ActividadOperativaLocal evento = new com.nodo.tpv.data.entities.ActividadOperativaLocal();
+                        evento.eventoId = java.util.UUID.randomUUID().toString();
+                        evento.tipoEvento = "CLIENTE_NUEVO"; // El panel React ahora escucha este evento
+                        evento.fechaDispositivo = System.currentTimeMillis();
+                        evento.estadoSync = "PENDIENTE";
+                        evento.detallesJson = new com.google.gson.Gson().toJson(payload);
+
+                        com.nodo.tpv.data.database.AppDatabase.getInstance(requireContext())
+                                .actividadOperativaLocalDao().insertar(evento);
+
+                        androidx.work.Constraints constraints = new androidx.work.Constraints.Builder()
+                                .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build();
+                        androidx.work.OneTimeWorkRequest syncRequest = new androidx.work.OneTimeWorkRequest.Builder(com.nodo.tpv.data.sync.OperatividadSyncWorker.class)
+                                .setConstraints(constraints).build();
+                        androidx.work.WorkManager.getInstance(requireContext())
+                                .enqueueUniqueWork("SyncCliente", androidx.work.ExistingWorkPolicy.KEEP, syncRequest);
+                    } catch (Exception e) {}
+                }).start();
+
                 d.dismiss();
             } else {
                 etA.setError("El alias es obligatorio");
